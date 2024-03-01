@@ -1,0 +1,176 @@
+Index: src/main/java/com/example/orange/services/LogService.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/example/orange/services/LogService.java b/src/main/java/com/example/orange/services/LogService.java
+--- a/src/main/java/com/example/orange/services/LogService.java	
++++ b/src/main/java/com/example/orange/services/LogService.java	(date 1708697939886)
+@@ -3,100 +3,106 @@
+ import com.example.orange.entities.Email;
+ import org.springframework.stereotype.Service;
+ 
++import java.io.BufferedReader;
+ import java.io.IOException;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.nio.file.Paths;
+ import java.util.ArrayList;
+ import java.util.List;
+-import java.util.concurrent.ForkJoinPool;
++import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.concurrent.TimeUnit;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
++import java.util.stream.Collectors;
++import java.util.stream.Stream;
++
+ @Service
+-
+ public class LogService {
+ 
+     public List<Email> senderMailStatus(String mail) {
+-        List<Email> resultEmails = new ArrayList<>(); // List to collect emails from all files
++        List<Email> resultEmails = new ArrayList<>();
+ 
+         String directory = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01";
+         String directory2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02";
+ 
+-        Path start = Paths.get(directory).resolve(directory2);
++        Path start = Paths.get(directory);
++        Path start2 = Paths.get(directory2);
+ 
+-        // Create a ForkJoinPool with parallelism equal to available processors ***
+-        ForkJoinPool forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+-
+-        // Perform the search in parallel
+-        forkJoinPool.submit(() ->
+-                {
++        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+ 
+-                    try {
+-                        Files.walk(start)
+-                                .parallel()
+-                                .filter(path -> Files.isRegularFile(path))
+-                                .forEach(path -> {
+-                                    List<Email> emails = searchInFile(path, mail);
+-                                    if (emails != null) {
+-                                        resultEmails.addAll(emails); // Add emails from this file to the result list
+-                                    }
+-                                });
+-                    } catch (IOException e) {
+-                        throw new RuntimeException(e);
+-                    }
+-                }
+-        ).join();
++        try {
++            Stream<Path> filesStream = Stream.concat(
++                    Files.walk(start),
++                    Files.walk(start2));
++            filesStream.filter(Files::isRegularFile)
++                    .forEach(path -> {
++                        executor.submit(() -> {
++                            try {
++                                List<Email> emails = searchInFile(path, mail);
++                                synchronized (resultEmails) {
++                                    resultEmails.addAll(emails);
++                                }
++                            } catch (IOException e) {
++                                throw new RuntimeException(e);
++                            }
++                        });
++                    });
++        } catch (IOException e) {
++            throw new RuntimeException(e);
++        }
+ 
+-        return resultEmails; // Return the list of emails collected from all files
+-    }
+-
+-    private static List<Email> searchInFile(Path path, String mail) {
++        executor.shutdown();
+         try {
+-            String emailRegex = "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b";
+-            List<Email> emails = new ArrayList<>();
+-
+-            Pattern pattern = Pattern.compile(emailRegex);
+-
+-            List<String> lines = Files.readAllLines(path);
+-            for (int i = 0; i < lines.size(); i++) {
+-                if (lines.get(i).contains("from") && lines.get(i).contains(mail)) {
++            executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt();
++        }
++
++        return resultEmails;
++    }
++
++    private static List<Email> searchInFile(Path path, String mail) throws IOException {
++        List<Email> emails = new ArrayList<>();
++        Pattern pattern = Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b");
++        String regex = "QUEUE\\(\\[(.*?)\\]\\)";
++        Pattern pattern2 = Pattern.compile(regex);
++        try (BufferedReader reader = Files.newBufferedReader(path)) {
++            String line;
++            while ((line = reader.readLine()) != null) {
++                if (line.contains("from <") && line.contains(mail)) {
+                     Email email = new Email();
+                     email.setSender(mail);
+-                    int j = i;
+-                    System.out.println("email sender : " + mail);
++                    
++                    Matcher matcherId = pattern2.matcher(line);
+ 
+-                    while (!lines.get(j).contains("deleted")) {
+-                        if (lines.get(j).contains("DEQUEUER")) {
+-                            Matcher matcher = pattern.matcher(lines.get(j));
++                    if (matcherId.find()) {
++                        String id = matcherId.group(1);
++                        email.setId(Integer.parseInt(id));}
++
++                    while ((line = reader.readLine()) != null && !line.contains("deleted")) {
++                        if (line.contains("DEQUEUER")) {
++                            Matcher matcher = pattern.matcher(line);
+                             while (matcher.find()) {
+                                 email.setReceiver(matcher.group());
+-                                System.out.println("Email receiver: " + matcher.group());
+                             }
+-
+                         }
+ 
+-                        if (lines.get(j).contains("relayed via")) {
++                        if (line.contains("relayed via")) {
+                             email.setResult("Delivered");
+-                            System.out.println("mail well delivered ");
+-                        } else if (lines.get(j).contains("undelivered")) {
+-                            System.out.println("mail undelivered ");
+-                        } else if (lines.get(j).contains("blocked")) {
+-                            System.out.println("mail blocked ");
++                        } else if (line.contains("undelivered")) {
++                            email.setResult("Undelivered");
++                        } else if (line.contains("blocked")) {
++                            email.setResult("Blocked");
+                         }
+-                        j++;
+                     }
+-                    System.out.println("Found in file: " + path.toString() + ", line: " + (i + 1));
+                     emails.add(email);
+-
+                 }
+             }
+-            return emails;
+-        } catch (IOException e) {
+-            // Handle exception
+-            e.printStackTrace();
+-            return null;
+-        }
++        }
++
++        return emails;
+     }
+ }
+-
+-
