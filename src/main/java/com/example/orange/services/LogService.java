@@ -72,7 +72,10 @@ public class LogService {
 
     private static String[] getDirectoriesInTimeRange(String startTime, String endTime) {
         List<String> filteredDirectories = new ArrayList<>();
-        String baseDirectory = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01\\";
+        String[] baseDirectories = {
+                "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01\\",
+                "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02\\"
+        };
 
         try {
             // Parse start and end times
@@ -80,56 +83,63 @@ public class LogService {
             LocalDateTime endDateTime = LocalDateTime.parse(endTime, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
             // Iterate through the date range
-            LocalDate currentDate = startDateTime.toLocalDate();
-            DateTimeFormatter fileNameFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm");
-            while (!currentDate.isAfter(endDateTime.toLocalDate())) {
-                String dateDirectoryName = currentDate.toString();
-                String directoryPath = baseDirectory;
+            for (String baseDirectory : baseDirectories) {
+                LocalDate currentDate = startDateTime.toLocalDate();
+                DateTimeFormatter fileNameFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm");
+                while (!currentDate.isAfter(endDateTime.toLocalDate())) {
+                    String dateDirectoryName = currentDate.toString();
+                    String directoryPath = baseDirectory;
 
-                try (Stream<Path> paths = Files.list(Paths.get(directoryPath))) {
-                    List<String> fileNames = paths.filter(Files::isRegularFile)
-                            .map(Path::getFileName)
-                            .map(Path::toString)
-                            .sorted() // Sort the file names to ensure they are in chronological order
-                            .collect(Collectors.toList());
+                    try (Stream<Path> paths = Files.list(Paths.get(directoryPath))) {
+                        List<String> fileNames = paths.filter(Files::isRegularFile)
+                                .map(Path::getFileName)
+                                .map(Path::toString)
+                                .sorted() // Sort the file names to ensure they are in chronological order
+                                .collect(Collectors.toList());
 
-                    for (int i = 0; i < fileNames.size(); i++) {
-                        String fileName = fileNames.get(i);
-                        LocalDateTime fileDateTime = LocalDateTime.parse(fileName.substring(0, 16), fileNameFormatter);
-                        LocalDateTime nextFileDateTime = null;
+                        for (int i = 0; i < fileNames.size(); i++) {
+                            String fileName = fileNames.get(i);
+                            LocalDateTime fileDateTime;
+                            if (fileName.length() < 16) {
+                                fileDateTime = LocalDateTime.parse(fileName.substring(0, 10) + "_00-00", fileNameFormatter);
+                            } else {
+                                fileDateTime = LocalDateTime.parse(fileName.substring(0, 16), fileNameFormatter);
+                            }
+                            LocalDateTime nextFileDateTime = null;
 
-                        if (i < fileNames.size() - 1) {
-                            String nextFileName = fileNames.get(i + 1);
-                            nextFileDateTime = LocalDateTime.parse(nextFileName.substring(0, 16), fileNameFormatter);
+                            if (i == fileNames.size() - 1) {
+                                nextFileDateTime = LocalDateTime.parse(fileName.substring(0, 10) + "_23-59", fileNameFormatter);
+                            } else {
+                                String nextFileName = fileNames.get(i + 1);
+                                nextFileDateTime = LocalDateTime.parse(nextFileName.substring(0, 16), fileNameFormatter);
+                            }
+
+                            boolean isFileInTimeRange = fileDateTime.isAfter(startDateTime) && fileDateTime.isBefore(endDateTime.plusMinutes(1));
+                            boolean isNextFileAfterEndTime = nextFileDateTime == null || nextFileDateTime.isAfter(endDateTime);
+
+                            if ((startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
+                                    || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime))) {
+                                filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
+                            }
                         }
-
-                        boolean isFileInTimeRange = fileDateTime.isAfter(startDateTime) && fileDateTime.isBefore(endDateTime.plusMinutes(1));
-                        boolean isNextFileAfterEndTime = nextFileDateTime == null || nextFileDateTime.isAfter(endDateTime);
-
-                        if ((startDateTime.isAfter(fileDateTime)&&startDateTime.isBefore(nextFileDateTime))
-                                        || (endDateTime.isAfter(fileDateTime)&& endDateTime.isBefore(nextFileDateTime)))
-              {
-                            filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
-                        }
+                    } catch (NoSuchFileException e) {
+                        // Handle case where file does not exist
+                        System.err.println("File does not exist: " + e.getFile());
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } finally {
+                        // Close any resources here if necessary
                     }
-                } catch (NoSuchFileException e) {
-                    // Handle case where file does not exist
-                    System.err.println("File does not exist: " + e.getFile());
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } finally {
-                    // Close any resources here if necessary
+                    currentDate = currentDate.plusDays(1); // Move to the next day
                 }
-                currentDate = currentDate.plusDays(1); // Move to the next day
             }
-
-
         } catch (DateTimeParseException e) {
             // Handle parsing or I/O exception
             e.printStackTrace();
         }
         return filteredDirectories.toArray(new String[0]);
     }
+
 
     private static List<Email> searchInFile(Path path, String mail) throws IOException {
         List<Email> emails = new ArrayList<>();
@@ -160,7 +170,7 @@ public class LogService {
                     Instant instant = dateTime.toInstant(ZoneOffset.UTC);
                     email.setDate(Date.from(instant));*/
 
-                    email.setDate(Date.from(dateTime.atZone(ZoneId.systemDefault()).toInstant()));
+                    email.setDate(Date.from(dateTime.atZone(ZoneId.of("UTC+1")).toInstant()));
                     Matcher matcherId = pattern2.matcher(line);
 
                     if (matcherId.find()) {
