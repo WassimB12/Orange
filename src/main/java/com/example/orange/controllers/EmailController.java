@@ -23,15 +23,15 @@ public class EmailController {
     expSer expSer;
 
     // Read operation
-    @GetMapping("/senderstauts/{id}")  //    @GetMapping("/senderstauts/{id}/{d1}/{d2}")
+      @GetMapping("/senderstauts/{id}/{d1}/{d2}")
 
     @Cacheable("emails")
 
     public CompletableFuture<List<Email>> senderStatus(@PathVariable("id")
-             String mail/*,@PathVariable("d1") String d1,@PathVariable("d2")String d2*/)
+             String mail,@PathVariable("d1") String d1,@PathVariable("d2")String d2)
     {
 
-        return logService.senderMailStatus(mail);//,d1,d2);
+        return logService.senderMailStatus(mail,d1,d2);
     }
     @GetMapping("/test/{id}")
 

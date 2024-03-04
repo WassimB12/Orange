@@ -19,19 +19,21 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Service
 public class LogService {
 
-    public  CompletableFuture<List<Email>> senderMailStatus(String mail)//, String d1, String d2) {
+    public  CompletableFuture<List<Email>> senderMailStatus(String mail, String d1, String d2)
     { List<Email> resultEmails = new ArrayList<>();
         CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
-      //  String[] directories = getDirectoriesInTimeRange(d1, d2);System.out.println("Directories: " + Arrays.toString(directories));
-        String[] directories = {
+       String[] directories = getDirectoriesInTimeRange(d1, d2);
+       System.out.println("Directories: " + Arrays.toString(directories));
+       /* String[] directories = {
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01",
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02"
-        };
+        };*/
         ExecutorService executor = Executors.newCachedThreadPool();
 
         try {
@@ -85,33 +87,42 @@ public class LogService {
                 String directoryPath = baseDirectory;
 
                 try (Stream<Path> paths = Files.list(Paths.get(directoryPath))) {
-                    paths.filter(Files::isRegularFile)
+                    List<String> fileNames = paths.filter(Files::isRegularFile)
                             .map(Path::getFileName)
                             .map(Path::toString)
-                            .filter(fileName -> {
-                                LocalDateTime fileDateTime = LocalDateTime.parse(fileName.substring(0, 16), fileNameFormatter);
-                                LocalDateTime nextFileDateTime = fileDateTime.plusMinutes(1); // Get start time of next file
-                                LocalDateTime endTimePlusOne = endDateTime.plusMinutes(1); // Increment end time by 1 minute
+                            .sorted() // Sort the file names to ensure they are in chronological order
+                            .collect(Collectors.toList());
 
-                                // Check if file start time is between the given range
-                                boolean isFileInTimeRange = fileDateTime.isBefore(startDateTime) && fileDateTime.isAfter(endTimePlusOne);
+                    for (int i = 0; i < fileNames.size(); i++) {
+                        String fileName = fileNames.get(i);
+                        LocalDateTime fileDateTime = LocalDateTime.parse(fileName.substring(0, 16), fileNameFormatter);
+                        LocalDateTime nextFileDateTime = null;
 
-                                // Check if the next file start time is after the given end time
-                                boolean isNextFileAfterEndTime = nextFileDateTime.isAfter(endDateTime);
+                        if (i < fileNames.size() - 1) {
+                            String nextFileName = fileNames.get(i + 1);
+                            nextFileDateTime = LocalDateTime.parse(nextFileName.substring(0, 16), fileNameFormatter);
+                        }
 
-                                // Ensure that the file start time is within the range and the next file is after the end time
-                                return isFileInTimeRange && isNextFileAfterEndTime;
-                            })
-                            .map(fileName -> Paths.get(directoryPath, fileName).toString()) // Include base directory path here
-                            .forEach(filteredDirectories::add);
+                        boolean isFileInTimeRange = fileDateTime.isAfter(startDateTime) && fileDateTime.isBefore(endDateTime.plusMinutes(1));
+                        boolean isNextFileAfterEndTime = nextFileDateTime == null || nextFileDateTime.isAfter(endDateTime);
+
+                        if ((startDateTime.isAfter(fileDateTime)&&startDateTime.isBefore(nextFileDateTime))
+                                        || (endDateTime.isAfter(fileDateTime)&& endDateTime.isBefore(nextFileDateTime)))
+              {
+                            filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
+                        }
+                    }
                 } catch (NoSuchFileException e) {
                     // Handle case where file does not exist
                     System.err.println("File does not exist: " + e.getFile());
                 } catch (IOException e) {
                     e.printStackTrace();
+                } finally {
+                    // Close any resources here if necessary
                 }
                 currentDate = currentDate.plusDays(1); // Move to the next day
             }
+
 
         } catch (DateTimeParseException e) {
             // Handle parsing or I/O exception
