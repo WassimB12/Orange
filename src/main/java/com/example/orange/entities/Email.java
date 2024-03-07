@@ -13,10 +13,10 @@ import java.util.Date;
 @AllArgsConstructor
 public class Email {
     private int id;
+    private String result;
     private String sender;
     private String receiver;
     private String fes;
-    private String result;
     private Date date;
     private String couloir;
     private int couloirID;

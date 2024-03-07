@@ -7,15 +7,10 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,13 +18,13 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Service
-public class LogService {
+public class SenderReceiverService {
 
-    public  CompletableFuture<List<Email>> senderMailStatus(String mail, String d1, String d2)
+    public  CompletableFuture<List<Email>> senderMailStatus(String mail, String receiver,String d1, String d2)
     { List<Email> resultEmails = new ArrayList<>();
         CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
-       String[] directories = getDirectoriesInTimeRange(d1, d2);
-       System.out.println("Directories: " + Arrays.toString(directories));
+        String[] directories = getDirectoriesInTimeRange(d1, d2);
+        System.out.println("Directories: " + Arrays.toString(directories));
        /* String[] directories = {
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01",
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02"
@@ -44,7 +39,7 @@ public class LogService {
                         .forEach(path -> {
                             executor.submit(() -> {
                                 try {
-                                    List<Email> emails = searchInFile(path, mail);
+                                    List<Email> emails = searchInFile(path, mail,receiver);
                                     synchronized (resultEmails) {
                                         resultEmails.addAll(emails);
                                     }
@@ -141,7 +136,7 @@ public class LogService {
     }
 
 
-    private static List<Email> searchInFile(Path path, String mail) throws IOException {
+    private static List<Email> searchInFile(Path path, String mail,String receiver) throws IOException {
         List<Email> emails = new ArrayList<>();
         Pattern pattern = Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b");
         String regex = "QUEUE\\(\\[(.*?)\\]\\)";
@@ -156,17 +151,19 @@ public class LogService {
         try (BufferedReader reader = Files.newBufferedReader(path)) {
             String line;
             while ((line = reader.readLine()) != null) {
-                if (line.contains("from <") && line.contains(mail)) {
+
+                if (line.contains("from <") && line.contains(mail) ) {
+                    String fileName = path.getFileName().toString().substring(0, Math.min(10, path.getFileName().toString().length()));
+                    // Copy 11 characters from the actual line
+                    String extractedLine = line.substring(0, Math.min(8, line.length()));
+                    String dateString=(fileName+"T"+extractedLine);
+
+                    LocalDateTime dateTime = LocalDateTime.parse(dateString, formatter);
                     Email email = new Email();
                     email.setSender(mail);
                     email.setFes(path.getParent().getFileName().toString());
 
-                    String fileName = path.getFileName().toString().substring(0, Math.min(10, path.getFileName().toString().length()));
-                    // Copy 11 characters from the actual line
-                    String extractedLine = line.substring(0, Math.min(8, line.length()));
-                   String dateString=(fileName+"T"+extractedLine);
-
-                   LocalDateTime dateTime = LocalDateTime.parse(dateString, formatter);/*
+                  /*
                     Instant instant = dateTime.toInstant(ZoneOffset.UTC);
                     email.setDate(Date.from(instant));*/
 
@@ -204,15 +201,16 @@ public class LogService {
                             if (matcherIP.find()) {
                                 String ipAddress = matcherIP.group(1);
                                 email.setCouloir(ipAddress);
-                                        //String.valueOf(searchIDinFiles("57117905")));
+                                //String.valueOf(searchIDinFiles("57117905")));
                             }
                         } else if (line.contains("undelivered")) {
                             email.setResult("Undelivered");
                         } else if (line.contains("blocked")) {
                             email.setResult("Blocked");
                         }
-                    }
-                    emails.add(email);
+                    } if(receiver.equals("none")) {emails.add(email);}
+                        else if (Objects.equals(email.getReceiver(), receiver)){
+                            emails.add(email);}
                 }
             }
         }
@@ -231,7 +229,7 @@ public class LogService {
                     .map(path -> searchWordInFile(path, wordToSearch))
                     .filter(res -> res != null)
                     .findFirst()
-                    .orElse("Word not found");
+                    .orElse("id not found");
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
@@ -255,4 +253,9 @@ public class LogService {
         return null; // Word not found in this file
     }
 }
+
+
+
+
+
 
