@@ -20,6 +20,7 @@ public class Email {
     private Date date;
     private String couloir;
     private int couloirID;
+    private String iPAdress;
 
     // Constructor, getters, and setters
 }

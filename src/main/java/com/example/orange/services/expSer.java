@@ -7,15 +7,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,10 +21,10 @@ import java.util.stream.Stream;
 @Service
 public class expSer {
 
-    public  CompletableFuture<List<Email>> senderMailStatus(String mail, String d1, String d2)
-    { List<Email> resultEmails = new ArrayList<>();
+    public CompletableFuture<List<Email>> senderMailStatus(String mail, String receiver, String d1, String d2) {
+        List<Email> resultEmails = new ArrayList<>();
         CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
-        String[] directories = getDirectoriesInTimeRange(d1, d2);
+        String[] directories = getDirectoriesInTimeRange(d1, d2, "logSearch");
         System.out.println("Directories: " + Arrays.toString(directories));
        /* String[] directories = {
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01",
@@ -44,7 +40,7 @@ public class expSer {
                         .forEach(path -> {
                             executor.submit(() -> {
                                 try {
-                                    List<Email> emails = searchInFile(path, mail);
+                                    List<Email> emails = searchInFile(path, mail, receiver);
                                     synchronized (resultEmails) {
                                         resultEmails.addAll(emails);
                                     }
@@ -70,12 +66,23 @@ public class expSer {
         return futureResult;
     }
 
-    private static String[] getDirectoriesInTimeRange(String startTime, String endTime) {
+    private static String[] getDirectoriesInTimeRange(String startTime, String endTime, String op) {
         List<String> filteredDirectories = new ArrayList<>();
         String[] baseDirectories = {
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01\\",
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02\\"
         };
+
+
+        if (Objects.equals(op, "couloirSearch")) {
+            baseDirectories = new String[]{
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\VIP02\\",
+
+            };
+
+
+        }
+
 
         try {
             // Parse start and end times
@@ -116,10 +123,17 @@ public class expSer {
 
                             boolean isFileInTimeRange = fileDateTime.isAfter(startDateTime) && fileDateTime.isBefore(endDateTime.plusMinutes(1));
                             boolean isNextFileAfterEndTime = nextFileDateTime == null || nextFileDateTime.isAfter(endDateTime);
+//*/
+                            if (Objects.equals(op, "logSearch")) {
+                                if ((startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
+                                        || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime))) {
+                                    filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
+                                }
+                            } else if (Objects.equals(op, "couloirSearch")) {
+                                if (startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime)) {
+                                    filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
+                                }
 
-                            if ((startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
-                                    || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime))) {
-                                filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
                             }
                         }
                     } catch (NoSuchFileException e) {
@@ -141,7 +155,7 @@ public class expSer {
     }
 
 
-    private static List<Email> searchInFile(Path path, String mail) throws IOException {
+    private static List<Email> searchInFile(Path path, String mail, String receiver) throws IOException {
         List<Email> emails = new ArrayList<>();
         Pattern pattern = Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b");
         String regex = "QUEUE\\(\\[(.*?)\\]\\)";
@@ -157,11 +171,11 @@ public class expSer {
             String line;
             while ((line = reader.readLine()) != null) {
 
-                if (line.contains("from <") && line.contains(mail) ) {
+                if (line.contains("from <") && line.contains(mail)) {
                     String fileName = path.getFileName().toString().substring(0, Math.min(10, path.getFileName().toString().length()));
                     // Copy 11 characters from the actual line
                     String extractedLine = line.substring(0, Math.min(8, line.length()));
-                    String dateString=(fileName+"T"+extractedLine);
+                    String dateString = (fileName + "T" + extractedLine);
 
                     LocalDateTime dateTime = LocalDateTime.parse(dateString, formatter);
                     Email email = new Email();
@@ -205,8 +219,11 @@ public class expSer {
 
                             if (matcherIP.find()) {
                                 String ipAddress = matcherIP.group(1);
-                                email.setCouloir(ipAddress);
-                                //String.valueOf(searchIDinFiles("57117905")));
+                                SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
+
+                                String formatedDate = formatter2.format(email.getDate());
+email.setCouloir(findCouloir(String.valueOf(email.getCouloirID())));
+                                //email.setCouloir(searchIDinFiles(String.valueOf(email.getCouloirID()), formatedDate));
                             }
                         } else if (line.contains("undelivered")) {
                             email.setResult("Undelivered");
@@ -214,7 +231,11 @@ public class expSer {
                             email.setResult("Blocked");
                         }
                     }
-                    emails.add(email);
+                    if (receiver.equals("all")) {
+                        emails.add(email);
+                    } else if (Objects.equals(email.getReceiver(), receiver)) {
+                        emails.add(email);
+                    }
                 }
             }
         }
@@ -222,18 +243,25 @@ public class expSer {
         return emails;
     }
 
-    private static String searchIDinFiles(String wordToSearch) {
-        String directoryPath = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\VIP02";
+    private static String searchIDinFiles(String wordToSearch, String date) {
+        String[] logDirectories = getDirectoriesInTimeRange(date, date, "couloirSearch");
+
+
+        System.out.println("CouloirFiles: " + Arrays.toString(logDirectories));
         String result = null;
         ExecutorService executor = Executors.newCachedThreadPool();
 
-        try (Stream<Path> paths = Files.walk(Paths.get(directoryPath))) {
-            result = paths.parallel()
-                    .filter(Files::isRegularFile)
-                    .map(path -> searchWordInFile(path, wordToSearch))
-                    .filter(res -> res != null)
-                    .findFirst()
-                    .orElse("Word not found");
+        try {
+            for (String logDirectory : logDirectories) {
+                try (Stream<Path> paths = Files.walk(Paths.get(logDirectory))) {
+                    result = paths.parallel()
+                            .filter(Files::isRegularFile)
+                            .map(path -> searchWordInFile(path, wordToSearch, date))
+                            .filter(res -> res != null)
+                            .findFirst()
+                            .orElse("id not found");
+                }
+            }
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
@@ -243,18 +271,114 @@ public class expSer {
         return result;
     }
 
-    private static String searchWordInFile(Path path, String wordToSearch) {
+    private static String searchWordInFile(Path path, String wordToSearch, String date) {
+        String result = "VIP01";
+
         try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             String line;
-            while ((line = reader.readLine()) != null) {
+            Boolean wordFound = false;
+            while ((line = reader.readLine()) != null && (!wordFound)) {
                 if (line.contains(wordToSearch)) {
-                    return path.getParent().getFileName().toString();
+                    wordFound = true;
+                    result = "VIP02";
+                    break;
+
+
                 }
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
-        return null; // Word not found in this file
+        return result; // Word not found in this file
+    }
+
+    private static String findCouloir( String wordToSearch) {
+        Path directory = Path.of("C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\VIP02\\");
+        String couloirName;
+
+        // Create an executor service with a single thread
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        try {
+            // Start searching for the word in files
+            Future<Path> result = findWordInFiles(executor, directory, wordToSearch);
+
+            // Wait for the result
+            Path foundFilePath = result.get();
+
+            // If the result is not null, print the file path where the word was found
+            if (foundFilePath != null) {
+                System.out.println("Word '" + wordToSearch + "' found in file: " + foundFilePath);
+                couloirName="VIP02";
+            } else {
+                System.out.println("Word '" + wordToSearch + "' not found in any file.");
+                couloirName="VIP01";
+            }
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // Shutdown the executor service
+            executor.shutdown();
+        }
+        return couloirName;
+    }
+
+    public static CompletableFuture<Path> findWordInFiles(ExecutorService executor, Path directory, String wordToSearch) {
+        // Create a list to hold the futures for each file search task
+        List<CompletableFuture<Path>> futures = new ArrayList<>();
+
+        // Iterate over the files in the directory
+        try {
+            Files.walk(directory)
+                    .filter(Files::isRegularFile)
+                    .forEach(file -> {
+                        // Submit a task to search for the word in each file
+                        CompletableFuture<Path> future = CompletableFuture.supplyAsync(() -> searchWordInFile(file, wordToSearch), executor);
+                        futures.add(future);
+                    });
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        // Combine all the futures into a single future that completes when any of the futures complete
+        CompletableFuture<Path>[] futureArray = futures.toArray(new CompletableFuture[0]);
+        CompletableFuture<Void> allOfFuture = CompletableFuture.allOf(futureArray);
+
+        // Return a future that is completed when any of the file search tasks is completed
+        return allOfFuture.thenApply(ignoredVoid -> {
+            for (CompletableFuture<Path> future : futureArray) {
+                if (!future.isCompletedExceptionally() && future.getNow(null) != null) {
+                    return future.getNow(null);
+                }
+            }
+            return null;
+        });
+    }
+
+    public static Path searchWordInFile(Path file, String wordToSearch) {
+        // Search for the word in the file
+        try (BufferedReader reader = Files.newBufferedReader(file)) {
+            String line;
+            Boolean res=false;
+            while ((line = reader.readLine()) != null && !res) {
+                if (line.contains(wordToSearch)) {
+                    res=true;
+                    // If the word is found, return the file path
+                    return file;
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        // If the word is not found, return null
+        return null;
     }
 }
+
+
+
+
+
 

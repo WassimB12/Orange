@@ -7,6 +7,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.text.SimpleDateFormat;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -23,7 +24,7 @@ public class SenderReceiverService {
     public  CompletableFuture<List<Email>> senderMailStatus(String mail, String receiver,String d1, String d2)
     { List<Email> resultEmails = new ArrayList<>();
         CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
-        String[] directories = getDirectoriesInTimeRange(d1, d2);
+        String[] directories = getDirectoriesInTimeRange(d1, d2,"logSearch","none");
         System.out.println("Directories: " + Arrays.toString(directories));
        /* String[] directories = {
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01",
@@ -65,12 +66,27 @@ public class SenderReceiverService {
         return futureResult;
     }
 
-    private static String[] getDirectoriesInTimeRange(String startTime, String endTime) {
+    private static String[] getDirectoriesInTimeRange(String startTime, String endTime,String op,String couloir) {
         List<String> filteredDirectories = new ArrayList<>();
         String[] baseDirectories = {
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01\\",
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02\\"
         };
+
+
+
+        if (Objects.equals(op,"couloirSearch")) {
+             baseDirectories = new String[]{
+                     "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\"+couloir+"02\\",
+
+             };
+
+
+        }
+
+
+
+
 
         try {
             // Parse start and end times
@@ -111,11 +127,17 @@ public class SenderReceiverService {
 
                             boolean isFileInTimeRange = fileDateTime.isAfter(startDateTime) && fileDateTime.isBefore(endDateTime.plusMinutes(1));
                             boolean isNextFileAfterEndTime = nextFileDateTime == null || nextFileDateTime.isAfter(endDateTime);
-
-                            if ((startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
+//*/
+    if (Objects.equals(op,"logSearch")){if ((startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
                                     || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime))) {
                                 filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
-                            }
+                            }}
+    else if (Objects.equals(op,"couloirSearch")) {
+        if (startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime)) {
+        filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
+    }
+
+    }
                         }
                     } catch (NoSuchFileException e) {
                         // Handle case where file does not exist
@@ -200,15 +222,65 @@ public class SenderReceiverService {
 
                             if (matcherIP.find()) {
                                 String ipAddress = matcherIP.group(1);
-                                email.setCouloir(ipAddress);
-                                //String.valueOf(searchIDinFiles("57117905")));
+email.setIPAdress(ipAddress);
+                                SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
+
+                                String formatedDate = formatter2.format(email.getDate());
+//// couloir variations code if ipAdress==...
+                              if(Objects.equals(email.getResult(),"Delivered")
+                                      &&  (Objects.equals(email.getReceiver(), receiver)
+                                      ||Objects.equals("all", receiver) ))
+                              {
+
+                                  if(ipAddress.equals("10.46.96.20"))
+                                  {
+               email.setCouloir(searchIDinFiles(String.valueOf(email.getCouloirID()), formatedDate,"VIP"));
+
+                                  }
+                                 else if(ipAddress.equals("10.46.96.21"))
+                                  {
+               email.setCouloir(searchIDinFiles(String.valueOf(email.getCouloirID()), formatedDate,"GP"));
+
+                              }
+                                  else if(ipAddress.equals("10.46.96.22"))
+                                  {
+            email.setCouloir(searchIDinFiles(String.valueOf(email.getCouloirID()), formatedDate,"ML"));
+
+                            }
+                                  else if(ipAddress.equals("10.46.96.13"))
+                                  {
+                                      email.setCouloir("VIP01");
+                                  }
+                                  else if(ipAddress.equals("10.46.96.14"))
+                                  {
+                                      email.setCouloir("VIP02");}
+                                  else if(ipAddress.equals("10.46.96.15"))
+                                  {
+                                      email.setCouloir("GP01");}
+
+                                  else if(ipAddress.equals("10.46.96.16"))
+                                  {
+                                      email.setCouloir("GP02");}
+
+                                  else if(ipAddress.equals("10.46.96.17"))
+                                  {
+                                      email.setCouloir("ML01");
+                                  }
+
+                                  else if(ipAddress.equals("10.46.96.18"))
+                                  {
+                                      email.setCouloir("ML02");}
+
+
+
+                                  }
                             }
                         } else if (line.contains("undelivered")) {
                             email.setResult("Undelivered");
                         } else if (line.contains("blocked")) {
                             email.setResult("Blocked");
                         }
-                    } if(receiver.equals("none")) {emails.add(email);}
+                    } if(receiver.equals("all")) {emails.add(email);}
                         else if (Objects.equals(email.getReceiver(), receiver)){
                             emails.add(email);}
                 }
@@ -218,18 +290,25 @@ public class SenderReceiverService {
         return emails;
     }
 
-    private static String searchIDinFiles(String wordToSearch) {
-        String directoryPath = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\VIP02";
-        String result = null;
-        ExecutorService executor = Executors.newCachedThreadPool();
+    private static String searchIDinFiles(String wordToSearch, String date,String couloir) {
+      String[] logDirectories = getDirectoriesInTimeRange(date, date, "couloirSearch",couloir);
 
-        try (Stream<Path> paths = Files.walk(Paths.get(directoryPath))) {
-            result = paths.parallel()
-                    .filter(Files::isRegularFile)
-                    .map(path -> searchWordInFile(path, wordToSearch))
-                    .filter(res -> res != null)
-                    .findFirst()
-                    .orElse("id not found");
+// work on this
+        System.out.println("CouloirFiles: " + Arrays.toString(logDirectories));
+        String result = null;
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+
+        try {
+            for (String logDirectory : logDirectories) {
+                try (Stream<Path> paths = Files.walk(Paths.get(logDirectory))) {
+                    result = paths.parallel()
+                            .filter(Files::isRegularFile)
+                            .map(path -> searchWordInFile(path, wordToSearch, date,couloir))
+                            .filter(res -> res != null)
+                            .findFirst()
+                            .orElse("id not found");
+                }
+            }
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
@@ -239,18 +318,25 @@ public class SenderReceiverService {
         return result;
     }
 
-    private static String searchWordInFile(Path path, String wordToSearch) {
+    private static String searchWordInFile(Path path, String wordToSearch, String date,String couloir) {
+        String result=couloir+"01";
+
         try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             String line;
-            while ((line = reader.readLine()) != null) {
+            Boolean wordFound=false;
+            while ((line = reader.readLine()) != null && (!wordFound)) {
                 if (line.contains(wordToSearch)) {
-                    return path.getParent().getFileName().toString();
+                    wordFound=true;
+                    result=couloir+"02";
+                    break;
+
+
                 }
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
-        return null; // Word not found in this file
+        return result; // Word not found in this file
     }
 }
 

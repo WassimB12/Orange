@@ -26,7 +26,7 @@ public class EmailController {
     expSer expSer;
 
     // Read operation
-      @GetMapping("/senderstauts/{id}/{id2}/{d1}/{d2}")
+      @GetMapping("/send/{id}/{id2}/{d1}/{d2}")
 
     @Cacheable("emails")
 
@@ -37,13 +37,15 @@ public class EmailController {
 
         return senderReceiverService.senderMailStatus(mail,mail2,d1,d2);
     }
-    @GetMapping("/test/{id}/{d1}/{d2}")
+    @GetMapping("/test/{id}/{id2}/{d1}/{d2}")
     public CompletableFuture<List<Email>> test(@PathVariable("id")
-                                                   String mail,@PathVariable("d1") String d1,@PathVariable("d2")String d2)
+                                                   String mail,@PathVariable("id2")
+                                                   String mail2,@PathVariable("d1") String d1,@PathVariable("d2")String d2)
     {
 
-        return expSer.senderMailStatus(mail,d1,d2);
+        return expSer.senderMailStatus(mail,mail2,d1,d2);
     }
+
     @GetMapping("/log/{id}")
 
     public String log(@PathVariable("id") String id) throws IOException, ExecutionException, InterruptedException {
