@@ -52,5 +52,13 @@ public class EmailController {
 
         return logDetails.searchLogInFiles(id);
     }
+    @GetMapping("/receiver/{id}/{d1}/{d2}")
+
+    public CompletableFuture<List<Email>> receiverStatus(@PathVariable("id")
+                                                       String mail,@PathVariable("d1") String d1,@PathVariable("d2")String d2)
+    {
+
+        return senderReceiverService.checkReceiver(mail,d1,d2);
+    }
 
 }
