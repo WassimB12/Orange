@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -28,6 +29,8 @@ import java.util.stream.Stream;
 @Service
 public class SenderReceiverService {
     static Pattern pattern = Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b");
+    static Pattern patternSender = Pattern.compile("from <(.*?)>");
+    static Pattern patternFESid = Pattern.compile("got:250 (.*?) message");
     static String regex = "QUEUE\\(\\[(.*?)\\]\\)";
     static String ipv4Regex = "relayed via ((?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})";
     static String ipv4Regex2 = "^((25[0-5]|(2[0-4]|1\\d|[1-9]|)\\d)\\.?\\b){4}$";
@@ -55,10 +58,19 @@ public class SenderReceiverService {
 
         } else if (Objects.equals(op, "receiverSearch")) {
             baseDirectories = new String[]{
-                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\",
-                    "C:\\Users\\wassi\\OneDrive\\Bureau\\Log\\FES01\\", "C:\\Users\\wassi\\OneDrive\\Bureau\\Log\\FES02\\"
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX01",
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX02",
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX03",
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX04",
             };
 
+
+        } else if (Objects.equals(op, "receiverFesSearch")) {
+            baseDirectories = new String[]{
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\Log\\FES01",
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\Log\\FES02",
+
+            };
 
         }
 
@@ -92,24 +104,30 @@ public class SenderReceiverService {
                                 fileDateTime = LocalDateTime.parse(fileName.substring(0, 16), fileNameFormatter);
                             }
                             LocalDateTime nextFileDateTime = null;
-
-                            if (i == fileNames.size() - 1) {
-                                nextFileDateTime = LocalDateTime.parse(fileName.substring(0, 10) + "_23-59", fileNameFormatter);
-                            } else {
-                                String nextFileName = fileNames.get(i + 1);
-                                nextFileDateTime = LocalDateTime.parse(nextFileName.substring(0, 16), fileNameFormatter);
+                            if (!op.equals("receiverSearch")) {
+                                if (i == fileNames.size() - 1) {
+                                    nextFileDateTime = LocalDateTime.parse(fileName.substring(0, 10) + "_23-59", fileNameFormatter);
+                                } else {
+                                    String nextFileName = fileNames.get(i + 1);
+                                    nextFileDateTime = LocalDateTime.parse(nextFileName.substring(0, 16), fileNameFormatter);
+                                }
                             }
 
                             boolean isFileInTimeRange = fileDateTime.isAfter(startDateTime) && fileDateTime.isBefore(endDateTime.plusMinutes(1));
                             boolean isNextFileAfterEndTime = nextFileDateTime == null || nextFileDateTime.isAfter(endDateTime);
 //*/
-                            if (Objects.equals(op, "logSearch") || Objects.equals(op, "receiverSearch")) {
+                            if (Objects.equals(op, "logSearch") || Objects.equals(op, "receiverFesSearch")) {
                                 if ((startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
                                         || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime))) {
                                     filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
                                 }
                             } else if (Objects.equals(op, "couloirSearch")) {
                                 if (startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime)) {
+                                    filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
+                                }
+
+                            } else if (Objects.equals(op, "receiverSearch")) {
+                                if (startDateTime.isAfter(fileDateTime)) {
                                     filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
                                 }
 
@@ -142,14 +160,21 @@ public class SenderReceiverService {
             while ((line = reader.readLine()) != null) {
 
                 if (line.contains("from <") && line.contains(mail)) {
+                    Email email = new Email();
+                    Matcher matcher1 = patternSender.matcher(line);
+                    if (matcher1.find()) {
+                        String sender = matcher1.group(1);
+                        email.setSender(sender);
+                    }
+
+
                     String fileName = path.getFileName().toString().substring(0, Math.min(10, path.getFileName().toString().length()));
                     // Copy 11 characters from the actual line
                     String extractedLine = line.substring(0, Math.min(8, line.length()));
                     String dateString = (fileName + "T" + extractedLine);
 
                     LocalDateTime dateTime = LocalDateTime.parse(dateString, formatter);
-                    Email email = new Email();
-                    email.setSender(mail);
+
                     email.setFes(path.getParent().getFileName().toString());
 
                   /*
@@ -163,6 +188,7 @@ public class SenderReceiverService {
                         String id = matcherId.group(1);
                         email.setId(Integer.parseInt(id));
                     }
+
 
                     while ((line = reader.readLine()) != null && !line.contains("QUEUE([" + email.getId() + "]) deleted")) {
                         if (line.contains("DEQUEUER [" + email.getId())) {
@@ -182,6 +208,18 @@ public class SenderReceiverService {
                             }
                         }
 
+                        if (line.contains("[" + email.getId() + "] rule(Disc-Kaspersky-virus)")) {
+                            email.setResult("Rejected(mail considered as a virus)");
+                        }
+
+                        if (line.contains("[" + email.getId() + "] message body rejected, got:579 message content is not acceptable here")) {
+                            email.setResult("Rejected(mail content is not acceptable)");
+                        }
+
+                        if (line.contains("message discarded without processing")) {
+                            email.setResult("Rejected(Wrong mail adress)");
+                        }
+
 
                         if (line.contains("relayed via")) {
                             email.setResult("Delivered");
@@ -199,13 +237,13 @@ public class SenderReceiverService {
                                         || Objects.equals("all", receiver))) {
 
                                     if (ipAddress.equals("10.46.96.20")) {
-                                        email.setCouloir(searchIDinFiles(String.valueOf(email.getCouloirID()), formatedDate, "VIP"));
+                                        email.setCouloir(searchIDinFilesExecutor(String.valueOf(email.getCouloirID()), formatedDate, "VIP"));
 
                                     } else if (ipAddress.equals("10.46.96.21")) {
-                                        email.setCouloir(searchIDinFiles(String.valueOf(email.getCouloirID()), formatedDate, "GP"));
+                                        email.setCouloir(searchIDinFilesExecutor(String.valueOf(email.getCouloirID()), formatedDate, "GP"));
 
                                     } else if (ipAddress.equals("10.46.96.22")) {
-                                        email.setCouloir(searchIDinFiles(String.valueOf(email.getCouloirID()), formatedDate, "ML"));
+                                        email.setCouloir(searchIDinFilesExecutor(String.valueOf(email.getCouloirID()), formatedDate, "ML"));
 
                                     } else if (ipAddress.equals("10.46.96.13")) {
                                         email.setCouloir("VIP01");
@@ -242,7 +280,7 @@ public class SenderReceiverService {
         return emails;
     }
 
-    private static String searchIDinFiles(String wordToSearch, String date, String couloir) {
+    private static String searchIDinFilesExecutor(String wordToSearch, String date, String couloir) {
         String[] logDirectories = getDirectoriesInTimeRange(date, date, "couloirSearch", couloir);
 
 // work on this
@@ -291,6 +329,7 @@ public class SenderReceiverService {
         return result; // Word not found in this file
     }
 
+    //********* Receiver Functions   **********//
     public static List<Email> readLog(Path path, String receiverMail, String word2) throws IOException {
         List<Email> emails = new ArrayList<>();
 
@@ -314,7 +353,68 @@ public class SenderReceiverService {
                     }
 
                     while ((line = reader.readLine()) != null && !line.contains("deleted")) {
-                        if (line.contains("stored on ")) {
+
+                        if (line.contains("message accepted")) {
+                            Matcher matcher1 = patternFESid.matcher(line);
+                            if (matcher1.find()) {
+                                String fesId = matcher1.group(1);
+                                email.setCouloirID(Integer.parseInt(fesId));
+                            }
+                        }
+                        if (line.contains("relayed via")) {
+                            email.setResult("Delivered");
+                        } else if (line.contains("rule(Disc-Kaspersky-spam)")) {
+                            email.setResult("Rejected(mail considered as a spam)");
+                        } else if (line.contains("[" + email.getId() + "] message body rejected, got:579 message content is not acceptable here")) {
+                            email.setResult("Rejected(mail content is not acceptable)");
+                        } else if (line.contains("DEQUEUER [" + email.getId() + "]") && line.contains("message discarded without processing")) {
+                            email.setResult("Rejected(Wrong mail adress)");
+                        }
+                        if (line.contains("DEQUEUER") && line.contains(receiverMail)) {
+                            matcher = pattern.matcher(line);
+                            while (matcher.find()) {
+                                email.setReceiver(matcher.group());
+                            }
+                            String fileName = path.getFileName().toString().substring(0, Math.min(10, path.getFileName().toString().length()));
+                            // Copy 11 characters from the actual line
+                            String extractedLine = line.substring(0, Math.min(8, line.length()));
+                            String dateString = (fileName + "T" + extractedLine);
+
+                            LocalDateTime dateTime = LocalDateTime.parse(dateString, formatter);
+                            email.setDate(Date.from(dateTime.atZone(ZoneId.of("UTC+1")).toInstant()));
+                            email.setFes(path.getParent().getFileName().toString());
+
+                        }
+
+
+                    }
+
+                    if (Objects.equals(email.getReceiver(), receiverMail)) {
+
+                        // email.setCouloir(executorFesReceiver(email.getId(), String.valueOf(email.getDate())));
+                        searchWordInFesFiles(email, email.getDate());
+
+
+                        emails.add(email);
+
+                    }
+
+                }
+            }
+        }
+
+        return emails;
+
+
+    }
+
+    static void CheckFesForReceiverMails(Email email, Path path) {
+        try (BufferedReader reader = Files.newBufferedReader(path)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains("QUEUE([" + email.getId() + "])") && line.contains("from")) {
+                    while (!line.contains("QUEUE([" + email.getId() + "]) deleted")) {
+                        if (line.contains("[" + email.getId() + "] stored on ")) {
                             email.setResult("Delivered client POP");
                             Pattern pattern = Pattern.compile("\\[(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})\\]");
                             Matcher matcherIP2 = pattern.matcher(line);
@@ -337,49 +437,107 @@ public class SenderReceiverService {
                         }
 
 
-                        if (line.contains("DEQUEUER") && line.contains(receiverMail)) {
-                            matcher = pattern.matcher(line);
-                            while (matcher.find()) {
-                                email.setReceiver(matcher.group());
-                            }
-                            String fileName = path.getFileName().toString().substring(0, Math.min(10, path.getFileName().toString().length()));
-                            // Copy 11 characters from the actual line
-                            String extractedLine = line.substring(0, Math.min(8, line.length()));
-                            String dateString = (fileName + "T" + extractedLine);
-
-                            LocalDateTime dateTime = LocalDateTime.parse(dateString, formatter);
-                            email.setDate(Date.from(dateTime.atZone(ZoneId.of("UTC+1")).toInstant()));
-                            email.setFes(path.getParent().getFileName().toString());
-
-                        }
-
-
-                        if (line.contains("relayed via")) {
-                            email.setResult("Delivered");
-                            Matcher matcherIP = patternIP.matcher(line);
-
-                            if (matcherIP.find()) {
-                                String ipAddress = matcherIP.group(1);
-                                email.setIPAdress(ipAddress);
-                            }
-                        } else if (line.contains("undelivered")) {
-                            email.setResult("Undelivered");
-                        } else if (line.contains("blocked")) {
-                            email.setResult("Blocked");
-                        }
                     }
-                    if (Objects.equals(email.getReceiver(), receiverMail)) {
-                        emails.add(email);
-                    }
+                }
 
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    public static void searchWordInFesFiles(Email email, Date d1) {
+        String pattern = "yyyy-MM-dd'T'HH:mm:ss";
+
+        DateFormat df = new SimpleDateFormat(pattern);
+
+
+        String date = df.format(d1);
+
+        String[] directories = getDirectoriesInTimeRange(date, date, "receiverFesSearch", "none");
+
+// work on this
+        //  System.out.println("CouloirFiles: " + Arrays.toString(logDirectories));
+        ExecutorService executor = Executors.newCachedThreadPool();
+
+        try {
+            for (String logDirectory : directories) {
+                try (Stream<Path> paths = Files.walk(Paths.get(logDirectory))) {
+                    paths.parallel()
+                            .filter(Files::isRegularFile)
+                            .forEach(path -> searchWordInFesFile(path, email));
                 }
             }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            executor.shutdown();
         }
 
-        return emails;
-
-
     }
+
+
+    private static void searchWordInFesFile(Path path, Email email) {
+
+
+        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains(String.valueOf(email.getCouloirID())) &&
+                        line.contains("QUEUE([" + email.getCouloirID() + "])") &&
+                        !line.contains("QUEUE([" + email.getCouloirID() + "]) deleted")) {
+                    while ((line = reader.readLine()) != null) {
+                        if (line.contains("[" + email.getCouloirID() + "] rule(Disc-Kaspersky-virus)")) {
+                            email.setResult("Rejected(mail considered as a virus)");
+                        }
+
+                        if (line.contains("[" + email.getCouloirID() + "] message body rejected, got:579 message content is not acceptable here")) {
+                            email.setResult("Rejected(mail content is not acceptable)");
+                        }
+
+                        if (line.contains("DEQUEUER [" + email.getCouloirID() + "] ") && line.contains(" message discarded without processing")) {
+                            email.setResult("Rejected(Wrong mail adress)");
+                        }
+
+                        if (line.contains("[" + email.getCouloirID() + "] stored on ")) {
+                            email.setResult("Delivered client POP");
+                            Pattern pattern = Pattern.compile("\\[(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})\\]");
+                            Matcher matcherIP2 = pattern.matcher(line);
+                            if (matcherIP2.find()) {
+                                String ipAddressBack = matcherIP2.group(1);
+                                switch (ipAddressBack) {
+                                    case "10.46.2.51":
+                                        email.setIPAdress("BE01");
+                                        break;
+                                    case "10.46.2.52":
+                                        email.setIPAdress("BE02");
+                                        break;
+                                    case "10.46.2.53":
+                                        email.setIPAdress("BE03");
+                                        break;
+                                    case "10.46.2.54":
+                                        email.setIPAdress("BE04");
+                                        break;
+                                }
+                            }
+                        }
+                        if (line.contains("relayed via") && line.contains("DEQUEUER [" + email.getCouloirID() + "]")) {
+                            email.setResult("Delivered client SMTP");
+                        }
+                    }
+                    email.setCouloir(path.getParent().getFileName().toString());
+                    return; // Exit the method after finding and setting the couloir
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+// Word not found in this file
+
+        // Word not found in this file
+    }
+
 
     public CompletableFuture<List<Email>> senderMailStatus(String mail, String receiver, String d1, String d2) {
         List<Email> resultEmails = new ArrayList<>();
@@ -431,11 +589,12 @@ public class SenderReceiverService {
         CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
 
         String[] directories = getDirectoriesInTimeRange(d1, d2, "receiverSearch", "none"); //@@@
+        System.out.println("Directories: " + Arrays.toString(directories));
 
         String word2 = "from <";
 
         ExecutorService executor = Executors.newCachedThreadPool();
-
+        // to review this directory filtring process and compare it to the fesSearcher
         try {
             for (String directory : directories) {
                 Path start = Paths.get(directory);
@@ -470,12 +629,68 @@ public class SenderReceiverService {
         return futureResult;
     }
 
-
 }
 
 
 
 
+  /*  public static String executorFesReceiver(int id, String d1) throws IOException {
+        String pattern = "yyyy-MM-dd'T'HH:mm:ss";
+
+        DateFormat df = new SimpleDateFormat(pattern);
+
+
+        String date = df.format(d1);
+        //String[] directories = getDirectoriesInTimeRange(date, date, "receiverFesSearch", "none");
+        String[] directories = new String[]{
+                "C:\\Users\\wassi\\OneDrive\\Bureau\\Log\\FES01"};
+        System.out.println("Receiver Fes Search Directories: " + Arrays.toString(directories));
+
+        String result = null;
+        ExecutorService executor = Executors.newCachedThreadPool();
+
+        try {
+            for (String Directory : directories) {
+                try (Stream<Path> paths = Files.walk(Paths.get(Directory))) {
+                    result = paths.parallel()
+                            .filter(Files::isRegularFile)
+                            .map(path -> searchWordInFesFiles(path, String.valueOf(id), date))
+                            .filter(res -> res != null)
+                            .findFirst()
+                            .orElse("id not found");
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            executor.shutdown();
+        }
+
+        return result;
+
+
+    }
+
+    private static String searchWordInFesFiles(Path path, String wordToSearch, String date) {
+        String result = "Not found";
+
+        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            String line;
+            Boolean wordFound = false;
+            while ((line = reader.readLine()) != null && (!wordFound)) {
+                if (line.contains(wordToSearch)) {
+                    wordFound = true;
+                    result = path.getParent().getFileName().toString();
+                    break;
+
+
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return result; // Word not found in this file
+    }*/
 
 
 

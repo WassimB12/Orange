@@ -14,25 +14,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Stream;
+
 @Service
 public class LogDetails {
 
-
-    public  String searchLogInFiles(String wordToSearch) throws IOException, InterruptedException, ExecutionException {
-        StringBuilder resultBuilder = new StringBuilder();
-        String directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01";
-        String directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02";
-        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-
-        try {
-            searchInDirectory(directoryPath1, wordToSearch, executor, resultBuilder);
-            searchInDirectory(directoryPath2, wordToSearch, executor, resultBuilder);
-        } finally {
-            executor.shutdown();
-        }
-
-        return resultBuilder.toString();
-    }
 
     private static void searchInDirectory(String directoryPath, String wordToSearch, ExecutorService executor, StringBuilder resultBuilder) throws IOException {
         try (Stream<Path> paths = Files.walk(Paths.get(directoryPath))) {
@@ -41,10 +26,7 @@ public class LogDetails {
                     .forEach(path -> {
                         Future<String> future = executor.submit(() -> {
                             String result = searchLogInFile(path, wordToSearch);
-                            if (result != null) {
-                                return result;
-                            }
-                            return null;
+                            return result;
                         });
                         futures.add(future);
                     });
@@ -84,5 +66,21 @@ public class LogDetails {
         }
 
         return stringBuilder.toString();
+    }
+
+    public String searchLogInFiles(String wordToSearch) throws IOException, InterruptedException, ExecutionException {
+        StringBuilder resultBuilder = new StringBuilder();
+        String directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01";
+        String directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02";
+        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+
+        try {
+            searchInDirectory(directoryPath1, wordToSearch, executor, resultBuilder);
+            searchInDirectory(directoryPath2, wordToSearch, executor, resultBuilder);
+        } finally {
+            executor.shutdown();
+        }
+
+        return resultBuilder.toString();
     }
 }
