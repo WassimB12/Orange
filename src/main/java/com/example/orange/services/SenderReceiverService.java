@@ -54,6 +54,12 @@ public class SenderReceiverService {
                     "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\" + couloir + "02\\",
 
             };
+        } else if (Objects.equals(op, "couloirSearch2")) {
+            baseDirectories = new String[]{
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\" + couloir + "02\\",
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\" + couloir + "01\\",
+
+            };
 
 
         } else if (Objects.equals(op, "receiverSearch")) {
@@ -121,7 +127,8 @@ public class SenderReceiverService {
                                         || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime))) {
                                     filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
                                 }
-                            } else if (Objects.equals(op, "couloirSearch")) {
+                            } else if (Objects.equals(op, "couloirSearch") || Objects.equals(op, "couloirSearch2")) {
+                                startDateTime = startDateTime.minusMinutes(20);
                                 if (startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime)) {
                                     filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
                                 }
@@ -149,8 +156,10 @@ public class SenderReceiverService {
         return filteredDirectories.toArray(new String[0]);
     }
 
-    private static List<Email> searchInFile(Path path, String mail, String receiver) throws IOException {
+    private static List<Email> searchInFesSender(Path path, String mail, String receiver) throws IOException {
         List<Email> emails = new ArrayList<>();
+        boolean accountIsFullFound = false;
+        boolean exceedsSizeLimitFound = false;
 
 
         // Parse the string into LocalDateTime
@@ -198,6 +207,7 @@ public class SenderReceiverService {
                             }
                         }
                         if (line.contains("got:250")) {
+                            email.setResult("Delivered");
                             int startIndex = line.indexOf("got:250") + "got:250".length();
                             int endIndex = line.indexOf("message");
                             if (endIndex != -1) {
@@ -206,18 +216,36 @@ public class SenderReceiverService {
                                 value = value.replaceAll("\\s+", "");
                                 email.setCouloirID(Integer.parseInt(value));
                             }
-                        }
-
-                        if (line.contains("[" + email.getId() + "] rule(Disc-Kaspersky-virus)")) {
+                        } else if (line.contains("[" + email.getId() + "] rule(Disc-Kaspersky-virus)")) {
                             email.setResult("Rejected(mail considered as a virus)");
-                        }
-
-                        if (line.contains("[" + email.getId() + "] message body rejected, got:579 message content is not acceptable here")) {
+                        } else if (line.contains("[" + email.getId() + "] message body rejected, got:579 message content is not acceptable here")) {
                             email.setResult("Rejected(mail content is not acceptable)");
-                        }
+                        } else if (line.contains("composed message exceeds the size limit")) {
+                            email.setResult("Mail or attaechement exceed size limit");
+                            exceedsSizeLimitFound = true;
+                        } else if (//line.contains("DEQUEUER [" + email.getId() + "]") &&
+                                line.contains("failed: account is full")) {
+                            email.setResult("recipient inbox is full");
+                            accountIsFullFound = true;
+                        } else if (line.contains("[" + email.getId() + "] message body rejected, got:579 message content is not acceptable here")) {
+                            email.setResult("Rejected(mail content is not acceptable)");
 
-                        if (line.contains("message discarded without processing")) {
+                        } else if (line.contains("DEQUEUER [" + email.getId() + "]") && line.contains("message discarded without processing")
+                                && !accountIsFullFound &&
+                                !exceedsSizeLimitFound) {
                             email.setResult("Rejected(Wrong mail adress)");
+                        } else if (line.contains("nX-KAS-Level: [XXXXXXXX") && Objects.equals(email.getResult(), "Delivered"))
+                        // if line contains more than 8 X check in couloir if message is discareded or not
+                        {
+                            String pattern = "yyyy-MM-dd'T'HH:mm:ss";
+
+                            DateFormat df = new SimpleDateFormat(pattern);
+
+
+                            String date = df.format(email.getDate());
+                            email.setResult(searchCouloirIdExecutor
+                                    (String.valueOf(email.getCouloirID()), date,
+                                            ipAdressConclusion(email.getIPAdress()), 2));/* to be continued*/
                         }
 
 
@@ -228,39 +256,7 @@ public class SenderReceiverService {
                             if (matcherIP.find()) {
                                 String ipAddress = matcherIP.group(1);
                                 email.setIPAdress(ipAddress);
-                                SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
 
-                                String formatedDate = formatter2.format(email.getDate());
-//// couloir variations code if ipAdress==...
-                                if (Objects.equals(email.getResult(), "Delivered")
-                                        && (Objects.equals(email.getReceiver(), receiver)
-                                        || Objects.equals("all", receiver))) {
-
-                                    if (ipAddress.equals("10.46.96.20")) {
-                                        email.setCouloir(searchIDinFilesExecutor(String.valueOf(email.getCouloirID()), formatedDate, "VIP"));
-
-                                    } else if (ipAddress.equals("10.46.96.21")) {
-                                        email.setCouloir(searchIDinFilesExecutor(String.valueOf(email.getCouloirID()), formatedDate, "GP"));
-
-                                    } else if (ipAddress.equals("10.46.96.22")) {
-                                        email.setCouloir(searchIDinFilesExecutor(String.valueOf(email.getCouloirID()), formatedDate, "ML"));
-
-                                    } else if (ipAddress.equals("10.46.96.13")) {
-                                        email.setCouloir("VIP01");
-                                    } else if (ipAddress.equals("10.46.96.14")) {
-                                        email.setCouloir("VIP02");
-                                    } else if (ipAddress.equals("10.46.96.15")) {
-                                        email.setCouloir("GP01");
-                                    } else if (ipAddress.equals("10.46.96.16")) {
-                                        email.setCouloir("GP02");
-                                    } else if (ipAddress.equals("10.46.96.17")) {
-                                        email.setCouloir("ML01");
-                                    } else if (ipAddress.equals("10.46.96.18")) {
-                                        email.setCouloir("ML02");
-                                    }
-
-
-                                }
                             }
                         } else if (line.contains("undelivered")) {
                             email.setResult("Undelivered");
@@ -280,35 +276,81 @@ public class SenderReceiverService {
         return emails;
     }
 
-    private static String searchIDinFilesExecutor(String wordToSearch, String date, String couloir) {
+    static String ipAdressConclusion(String ipAddress) {
+        if (ipAddress.equals("10.46.96.20")) {
+            return "VIP";
+
+        } else if (ipAddress.equals("10.46.96.21")) {
+            return ("GP");
+
+        } else if (ipAddress.equals("10.46.96.22")) {
+            return ("ML");
+
+        } else if (ipAddress.equals("10.46.96.13")) {
+            return ("VIP");
+        } else if (ipAddress.equals("10.46.96.14")) {
+            return ("VIP");
+        } else if (ipAddress.equals("10.46.96.15")) {
+            return ("GP");
+        } else if (ipAddress.equals("10.46.96.16")) {
+            return ("GP");
+        } else if (ipAddress.equals("10.46.96.17")) {
+            return ("ML");
+        } else if (ipAddress.equals("10.46.96.18")) {
+            return ("ML");
+        }
+        return ipAddress;
+    }
+
+    private static String searchCouloirIdExecutor(String wordToSearch, String date, String couloir, int option) {
         String[] logDirectories = getDirectoriesInTimeRange(date, date, "couloirSearch", couloir);
 
 // work on this
-        //  System.out.println("CouloirFiles: " + Arrays.toString(logDirectories));
+        System.out.println("CouloirFiles: " + Arrays.toString(logDirectories));
         String result = null;
         ExecutorService executor = Executors.newCachedThreadPool();
-
-        try {
-            for (String logDirectory : logDirectories) {
-                try (Stream<Path> paths = Files.walk(Paths.get(logDirectory))) {
-                    result = paths.parallel()
-                            .filter(Files::isRegularFile)
-                            .map(path -> searchWordInFile(path, wordToSearch, date, couloir))
-                            .filter(res -> res != null)
-                            .findFirst()
-                            .orElse("id not found");
+        if (option == 1) {
+            try {
+                for (String logDirectory : logDirectories) {
+                    try (Stream<Path> paths = Files.walk(Paths.get(logDirectory))) {
+                        result = paths.parallel()
+                                .filter(Files::isRegularFile)
+                                .map(path -> searchCouloirID(path, wordToSearch, date, couloir))
+                                .filter(res -> res != null)
+                                .findFirst()
+                                .orElse("id not found");
+                    }
                 }
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                executor.shutdown();
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            executor.shutdown();
+        }
+        if (option == 2) {
+            String[] logDirectories2 = getDirectoriesInTimeRange(date, date, "couloirSearch2", couloir);
+            try {
+                for (String logDirectory : logDirectories2) {
+                    try (Stream<Path> paths = Files.walk(Paths.get(logDirectory))) {
+                        result = paths.parallel()
+                                .filter(Files::isRegularFile)
+                                .map(path -> searchCouloirID2(path, wordToSearch))
+                                .filter(res -> res != null)
+                                .findFirst()
+                                .orElse("id not found");
+                    }
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                executor.shutdown();
+            }
         }
 
         return result;
     }
 
-    private static String searchWordInFile(Path path, String wordToSearch, String date, String couloir) {
+    private static String searchCouloirID(Path path, String wordToSearch, String date, String couloir) {
         String result = couloir + "01";
 
         try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
@@ -329,9 +371,33 @@ public class SenderReceiverService {
         return result; // Word not found in this file
     }
 
+
+    private static String searchCouloirID2(Path path, String couloirID) {
+        String result = "Delivered";
+        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            String line;
+            Boolean wordFound = false;
+            while ((line = reader.readLine()) != null && (!wordFound)) {
+                if (line.contains("[" + couloirID + "] rule(discard")) {
+                    wordFound = true;
+                    result = "Rejected(Spam detected)";
+                    break;
+
+
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return result; // Word not found in this file
+    }
+
+
     //********* Receiver Functions   **********//
     public static List<Email> readLog(Path path, String receiverMail, String word2) throws IOException {
         List<Email> emails = new ArrayList<>();
+        boolean accountIsFullFound = false;
+        boolean exceedsSizeLimitFound = false;
 
         try (BufferedReader reader = Files.newBufferedReader(path)) {
             String line;
@@ -365,11 +431,21 @@ public class SenderReceiverService {
                             email.setResult("Delivered");
                         } else if (line.contains("rule(Disc-Kaspersky-spam)")) {
                             email.setResult("Rejected(mail considered as a spam)");
+                        } else if (line.contains("composed message exceeds the size limit")) {
+                            email.setResult("Mail or attaechement exceed size limit");
+                            exceedsSizeLimitFound = true;
+                        } else if (//line.contains("DEQUEUER [" + email.getId() + "]") &&
+                                line.contains("failed: account is full")) {
+                            email.setResult("recipient inbox is full");
+                            accountIsFullFound = true;
                         } else if (line.contains("[" + email.getId() + "] message body rejected, got:579 message content is not acceptable here")) {
                             email.setResult("Rejected(mail content is not acceptable)");
-                        } else if (line.contains("DEQUEUER [" + email.getId() + "]") && line.contains("message discarded without processing")) {
+
+                        }/* else if (line.contains("DEQUEUER [" + email.getId() + "]") && line.contains("message discarded without processing")
+                                && !accountIsFullFound &&
+                                !exceedsSizeLimitFound) {
                             email.setResult("Rejected(Wrong mail adress)");
-                        }
+                        }*/
                         if (line.contains("DEQUEUER") && line.contains(receiverMail)) {
                             matcher = pattern.matcher(line);
                             while (matcher.find()) {
@@ -392,7 +468,7 @@ public class SenderReceiverService {
                     if (Objects.equals(email.getReceiver(), receiverMail)) {
 
                         // email.setCouloir(executorFesReceiver(email.getId(), String.valueOf(email.getDate())));
-                        searchWordInFesFiles(email, email.getDate());
+                        searchFesIdMXExecutor(email, email.getDate());
 
 
                         emails.add(email);
@@ -447,7 +523,7 @@ public class SenderReceiverService {
     }
 
 
-    public static void searchWordInFesFiles(Email email, Date d1) {
+    public static void searchFesIdMXExecutor(Email email, Date d1) {
         String pattern = "yyyy-MM-dd'T'HH:mm:ss";
 
         DateFormat df = new SimpleDateFormat(pattern);
@@ -466,7 +542,7 @@ public class SenderReceiverService {
                 try (Stream<Path> paths = Files.walk(Paths.get(logDirectory))) {
                     paths.parallel()
                             .filter(Files::isRegularFile)
-                            .forEach(path -> searchWordInFesFile(path, email));
+                            .forEach(path -> searchFesIdMX(path, email));
                 }
             }
         } catch (IOException e) {
@@ -478,7 +554,7 @@ public class SenderReceiverService {
     }
 
 
-    private static void searchWordInFesFile(Path path, Email email) {
+    private static void searchFesIdMX(Path path, Email email) {
 
 
         try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
@@ -558,7 +634,7 @@ public class SenderReceiverService {
                         .forEach(path -> {
                             executor.submit(() -> {
                                 try {
-                                    List<Email> emails = searchInFile(path, mail, receiver);
+                                    List<Email> emails = searchInFesSender(path, mail, receiver);
                                     synchronized (resultEmails) {
                                         resultEmails.addAll(emails);
                                     }
@@ -629,6 +705,37 @@ public class SenderReceiverService {
         return futureResult;
     }
 
+    public String searchCouloirs(String ipAddress, int couloirID, String date) {
+
+        String formatedDate = date.substring(0, 16);
+
+
+        if (ipAddress.equals("10.46.96.20")) {
+            return (searchCouloirIdExecutor(String.valueOf(couloirID), formatedDate, "VIP", 1));
+
+        } else if (ipAddress.equals("10.46.96.21")) {
+            return (searchCouloirIdExecutor(String.valueOf(couloirID), formatedDate, "GP", 1));
+
+        } else if (ipAddress.equals("10.46.96.22")) {
+            return (searchCouloirIdExecutor(String.valueOf(couloirID), formatedDate, "ML", 1));
+
+        } else if (ipAddress.equals("10.46.96.13")) {
+            return ("VIP01");
+        } else if (ipAddress.equals("10.46.96.14")) {
+            return ("VIP02");
+        } else if (ipAddress.equals("10.46.96.15")) {
+            return ("GP01");
+        } else if (ipAddress.equals("10.46.96.16")) {
+            return ("GP02");
+        } else if (ipAddress.equals("10.46.96.17")) {
+            return ("ML01");
+        } else if (ipAddress.equals("10.46.96.18")) {
+            return ("ML02");
+        } else {
+            return "Not found";
+        }
+
+    }
 }
 
 
