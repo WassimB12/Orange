@@ -48,11 +48,12 @@ public class EmailController {
         return expSer.senderMailStatus(mail, mail2, d1, d2);
     }
 
-    @GetMapping("/log/{id}")
+    @GetMapping("/log/{id}/{op}/{ipAd}")
 
-    public String log(@PathVariable("id") String id) throws IOException, ExecutionException, InterruptedException {
+    public String logD(@PathVariable("id") String id, @PathVariable("op") int op,
+                       @PathVariable("ipAd") String ipAdress) throws IOException, ExecutionException, InterruptedException {
 
-        return logDetails.searchLogInFiles(id);
+        return logDetails.searchLogInFiles(id, op, ipAdress);
     }
 
     @GetMapping("/Couloir/{ip}/{couloirID}/{date}")
@@ -69,5 +70,6 @@ public class EmailController {
 
         return senderReceiverService.checkReceiver(mail, d1, d2);
     }
+
 
 }

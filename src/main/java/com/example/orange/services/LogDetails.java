@@ -52,12 +52,10 @@ public class LogDetails {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.contains(wordToSearch)) {
-                    copyLines = true;
-                }
-                if (copyLines) {
+
                     stringBuilder.append(line).append(System.lineSeparator());
                 }
-                if (copyLines && line.contains("QUEUE([" + wordToSearch + "]) deleted")) {
+                if (line.contains("QUEUE([" + wordToSearch + "]) deleted")) {
                     break;
                 }
             }
@@ -68,15 +66,79 @@ public class LogDetails {
         return stringBuilder.toString();
     }
 
-    public String searchLogInFiles(String wordToSearch) throws IOException, InterruptedException, ExecutionException {
+    public String searchLogInFiles(String wordToSearch, Integer option, String ipAdress) throws IOException, InterruptedException, ExecutionException {
         StringBuilder resultBuilder = new StringBuilder();
-        String directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01";
-        String directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02";
+        String directoryPath1 = "";
+
+        String directoryPath2 = "";
+
+
+        if (option == 1) {
+            directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01";
+            directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02";
+        } else {
+            switch (ipAdress) {
+                case "10.46.96.20" -> {
+                    directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\VIP01";
+                    directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\VIP02";
+
+
+                }
+                case "10.46.96.21" -> {
+                    directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\GP01";
+                    directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\GP02";
+
+                }
+                case "10.46.96.22" -> {
+                    directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\ML01";
+                    directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\ML02";
+
+                }
+                case "10.46.96.13" -> {
+                    directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\VIP01";
+                    directoryPath2 = null;
+
+                }
+                case "10.46.96.14" -> {
+                    directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\VIP02";
+                    directoryPath2 = null;
+
+                }
+                case "10.46.96.15" -> {
+                    directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\GP01";
+                    directoryPath2 = null;
+
+                }
+                case "10.46.96.16" -> {
+                    directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\GP02";
+                    directoryPath2 = null;
+
+                }
+                case "10.46.96.17" -> {
+                    directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\ML01";
+                    directoryPath2 = null;
+
+                }
+                case "10.46.96.18" -> {
+                    directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\ML02";
+                    directoryPath2 = null;
+
+                }
+                default -> {
+                    return "CouloirId unknown: " + wordToSearch;
+
+                }
+            }
+        }
         ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
         try {
-            searchInDirectory(directoryPath1, wordToSearch, executor, resultBuilder);
-            searchInDirectory(directoryPath2, wordToSearch, executor, resultBuilder);
+            if (directoryPath1 != null && !directoryPath1.isEmpty()) {
+                searchInDirectory(directoryPath1, wordToSearch, executor, resultBuilder);
+            }
+            if (directoryPath2 != null && !directoryPath2.isEmpty()) {
+                searchInDirectory(directoryPath2, wordToSearch, executor, resultBuilder);
+            }
         } finally {
             executor.shutdown();
         }

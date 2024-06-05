@@ -246,6 +246,24 @@ public class SenderReceiverService {
                             email.setResult(searchCouloirIdExecutor
                                     (String.valueOf(email.getCouloirID()), date,
                                             ipAdressConclusion(email.getIPAdress()), 2));/* to be continued*/
+                        } else if (line.contains("[" + email.getId() + "] stored on ")) {
+                            email.setResult("Delivered");
+                            Pattern pattern = Pattern.compile("\\[(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})\\]");
+                            Matcher matcherIP2 = pattern.matcher(line);
+                            if (matcherIP2.find()) {
+                                String ipAddressBack = matcherIP2.group(1);
+                                if (Objects.equals(ipAddressBack, "10.46.2.51")) {
+                                    email.setIPAdress("10.46.2.51");
+                                } else if (Objects.equals(ipAddressBack, "10.46.2.52")) {
+                                    email.setIPAdress("10.46.2.52");
+                                } else if (Objects.equals(ipAddressBack, "10.46.2.53")) {
+                                    email.setIPAdress("10.46.2.53");
+                                } else if (Objects.equals(ipAddressBack, "10.46.2.54")) {
+                                    email.setIPAdress("10.46.2.54");
+                                }
+
+
+                            }
                         }
 
 
@@ -260,8 +278,6 @@ public class SenderReceiverService {
                             }
                         } else if (line.contains("undelivered")) {
                             email.setResult("Undelivered");
-                        } else if (line.contains("blocked")) {
-                            email.setResult("Blocked");
                         }
                     }
                     if (receiver.equals("all")) {
@@ -731,8 +747,16 @@ public class SenderReceiverService {
             return ("ML01");
         } else if (ipAddress.equals("10.46.96.18")) {
             return ("ML02");
+        } else if (ipAddress.equals("10.46.2.51")) {
+            return ("BE01");
+        } else if (ipAddress.equals("10.46.2.52")) {
+            return ("BE02");
+        } else if (ipAddress.equals("10.46.2.53")) {
+            return ("BE03");
+        } else if (ipAddress.equals("10.46.2.54")) {
+            return ("BE04");
         } else {
-            return "Not found";
+            return "CouloirId unknown: " + ipAddress;
         }
 
     }
