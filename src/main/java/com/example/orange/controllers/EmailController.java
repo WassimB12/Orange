@@ -56,12 +56,6 @@ public class EmailController {
         return logDetails.searchLogInFiles(id, op, ipAdress);
     }
 
-    @GetMapping("/Couloir/{ip}/{couloirID}/{date}")
-
-    public String log(@PathVariable("ip") String ip, @PathVariable("couloirID") int couloirID, @PathVariable("date") String date) throws IOException, ExecutionException, InterruptedException {
-
-        return senderReceiverService.searchCouloirs(ip, couloirID, date);
-    }
 
     @GetMapping("/receiver/{id}/{d1}/{d2}")
 

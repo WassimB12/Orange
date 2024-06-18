@@ -6,9 +6,14 @@ import org.springframework.stereotype.Service;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
-import java.time.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
@@ -20,51 +25,6 @@ import java.util.stream.Stream;
 
 @Service
 public class expSer {
-
-    public CompletableFuture<List<Email>> senderMailStatus(String mail, String receiver, String d1, String d2) {
-        List<Email> resultEmails = new ArrayList<>();
-        CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
-        String[] directories = getDirectoriesInTimeRange(d1, d2, "logSearch");
-        System.out.println("Directories: " + Arrays.toString(directories));
-       /* String[] directories = {
-                "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01",
-                "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02"
-        };*/
-        ExecutorService executor = Executors.newCachedThreadPool();
-
-        try {
-            for (String directory : directories) {
-                Path start = Paths.get(directory);
-                Files.walk(start)
-                        .filter(Files::isRegularFile)
-                        .forEach(path -> {
-                            executor.submit(() -> {
-                                try {
-                                    List<Email> emails = searchInFile(path, mail, receiver);
-                                    synchronized (resultEmails) {
-                                        resultEmails.addAll(emails);
-                                    }
-                                } catch (IOException e) {
-                                    futureResult.completeExceptionally(e);
-                                }
-                            });
-                        });
-            }
-        } catch (IOException e) {
-            futureResult.completeExceptionally(e);
-        } finally {
-            executor.shutdown();
-            try {
-                executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                futureResult.completeExceptionally(e);
-            }
-        }
-
-        futureResult.complete(resultEmails);
-        return futureResult;
-    }
 
     private static String[] getDirectoriesInTimeRange(String startTime, String endTime, String op) {
         List<String> filteredDirectories = new ArrayList<>();
@@ -132,6 +92,8 @@ public class expSer {
                             } else if (Objects.equals(op, "couloirSearch")) {
                                 if (startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime)) {
                                     filteredDirectories.add(Paths.get(directoryPath, fileName).toString());
+
+
                                 }
 
                             }
@@ -141,8 +103,6 @@ public class expSer {
                         System.err.println("File does not exist: " + e.getFile());
                     } catch (IOException e) {
                         e.printStackTrace();
-                    } finally {
-                        // Close any resources here if necessary
                     }
                     currentDate = currentDate.plusDays(1); // Move to the next day
                 }
@@ -153,7 +113,6 @@ public class expSer {
         }
         return filteredDirectories.toArray(new String[0]);
     }
-
 
     private static List<Email> searchInFile(Path path, String mail, String receiver) throws IOException {
         List<Email> emails = new ArrayList<>();
@@ -222,7 +181,7 @@ public class expSer {
                                 SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
 
                                 String formatedDate = formatter2.format(email.getDate());
-email.setCouloir(findCouloir(String.valueOf(email.getCouloirID())));
+                                email.setCouloir(findCouloir(String.valueOf(email.getCouloirID())));
                                 //email.setCouloir(searchIDinFiles(String.valueOf(email.getCouloirID()), formatedDate));
                             }
                         } else if (line.contains("undelivered")) {
@@ -292,7 +251,7 @@ email.setCouloir(findCouloir(String.valueOf(email.getCouloirID())));
         return result; // Word not found in this file
     }
 
-    private static String findCouloir( String wordToSearch) {
+    private static String findCouloir(String wordToSearch) {
         Path directory = Path.of("C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\VIP02\\");
         String couloirName;
 
@@ -309,10 +268,10 @@ email.setCouloir(findCouloir(String.valueOf(email.getCouloirID())));
             // If the result is not null, print the file path where the word was found
             if (foundFilePath != null) {
                 System.out.println("Word '" + wordToSearch + "' found in file: " + foundFilePath);
-                couloirName="VIP02";
+                couloirName = "VIP02";
             } else {
                 System.out.println("Word '" + wordToSearch + "' not found in any file.");
-                couloirName="VIP01";
+                couloirName = "VIP01";
             }
         } catch (ExecutionException e) {
             throw new RuntimeException(e);
@@ -361,10 +320,10 @@ email.setCouloir(findCouloir(String.valueOf(email.getCouloirID())));
         // Search for the word in the file
         try (BufferedReader reader = Files.newBufferedReader(file)) {
             String line;
-            Boolean res=false;
+            Boolean res = false;
             while ((line = reader.readLine()) != null && !res) {
                 if (line.contains(wordToSearch)) {
-                    res=true;
+                    res = true;
                     // If the word is found, return the file path
                     return file;
                 }
@@ -374,6 +333,51 @@ email.setCouloir(findCouloir(String.valueOf(email.getCouloirID())));
         }
         // If the word is not found, return null
         return null;
+    }
+
+    public CompletableFuture<List<Email>> senderMailStatus(String mail, String receiver, String d1, String d2) {
+        List<Email> resultEmails = new ArrayList<>();
+        CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
+        String[] directories = getDirectoriesInTimeRange(d1, d2, "logSearch");
+        System.out.println("Directories: " + Arrays.toString(directories));
+       /* String[] directories = {
+                "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01",
+                "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02"
+        };*/
+        ExecutorService executor = Executors.newCachedThreadPool();
+
+        try {
+            for (String directory : directories) {
+                Path start = Paths.get(directory);
+                Files.walk(start)
+                        .filter(Files::isRegularFile)
+                        .forEach(path -> {
+                            executor.submit(() -> {
+                                try {
+                                    List<Email> emails = searchInFile(path, mail, receiver);
+                                    synchronized (resultEmails) {
+                                        resultEmails.addAll(emails);
+                                    }
+                                } catch (IOException e) {
+                                    futureResult.completeExceptionally(e);
+                                }
+                            });
+                        });
+            }
+        } catch (IOException e) {
+            futureResult.completeExceptionally(e);
+        } finally {
+            executor.shutdown();
+            try {
+                executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                futureResult.completeExceptionally(e);
+            }
+        }
+
+        futureResult.complete(resultEmails);
+        return futureResult;
     }
 }
 
