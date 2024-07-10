@@ -19,14 +19,16 @@ import java.util.stream.Stream;
 public class LogDetails {
 
 
-    private static void searchInDirectory(String directoryPath, String wordToSearch, ExecutorService executor, StringBuilder resultBuilder) throws IOException {
+    private static void searchInDirectory(String directoryPath, String wordToSearch,
+                                          ExecutorService executor, StringBuilder resultBuilder, String date) throws IOException {
         try (Stream<Path> paths = Files.walk(Paths.get(directoryPath))) {
             List<Future<String>> futures = new ArrayList<>();
+
             paths.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().contains(date))
                     .forEach(path -> {
                         Future<String> future = executor.submit(() -> {
-                            String result = searchLogInFile(path, wordToSearch);
-                            return result;
+                            return searchLogInFile(path, wordToSearch);
                         });
                         futures.add(future);
                     });
@@ -66,16 +68,24 @@ public class LogDetails {
         return stringBuilder.toString();
     }
 
-    public String searchLogInFiles(String wordToSearch, Integer option, String ipAdress) throws IOException, InterruptedException, ExecutionException {
+    public String searchLogInFiles(String wordToSearch, Integer option, String ipAdress, String date) throws IOException, InterruptedException, ExecutionException {
         StringBuilder resultBuilder = new StringBuilder();
         String directoryPath1 = "";
 
         String directoryPath2 = "";
+        String directoryPath3 = "";
+        String directoryPath4 = "";
 
 
         if (option == 1) {
             directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01";
             directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02";
+        } else if (option == 3) {
+            directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX01";
+            directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX02";
+            directoryPath3 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX03";
+            directoryPath4 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX04";
+
         } else {
             switch (ipAdress) {
                 case "10.46.96.20" -> {
@@ -93,6 +103,10 @@ public class LogDetails {
                     directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\ML01";
                     directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\ML02";
 
+                }
+                case "BE01", "BE02", "BE03", "BE04" -> {
+                    directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01";
+                    directoryPath2 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02";
                 }
                 case "10.46.96.13" -> {
                     directoryPath1 = "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\VIP01";
@@ -134,10 +148,16 @@ public class LogDetails {
 
         try {
             if (directoryPath1 != null && !directoryPath1.isEmpty()) {
-                searchInDirectory(directoryPath1, wordToSearch, executor, resultBuilder);
+                searchInDirectory(directoryPath1, wordToSearch, executor, resultBuilder, date);
             }
             if (directoryPath2 != null && !directoryPath2.isEmpty()) {
-                searchInDirectory(directoryPath2, wordToSearch, executor, resultBuilder);
+                searchInDirectory(directoryPath2, wordToSearch, executor, resultBuilder, date);
+            }
+            if (directoryPath3 != null && !directoryPath3.isEmpty()) {
+                searchInDirectory(directoryPath3, wordToSearch, executor, resultBuilder, date);
+            }
+            if (directoryPath4 != null && !directoryPath4.isEmpty()) {
+                searchInDirectory(directoryPath4, wordToSearch, executor, resultBuilder, date);
             }
         } finally {
             executor.shutdown();

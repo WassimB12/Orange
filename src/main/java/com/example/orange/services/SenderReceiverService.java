@@ -7,8 +7,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.DateFormat;
@@ -17,7 +17,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.Matcher;
@@ -26,40 +25,35 @@ import java.util.stream.Stream;
 
 @Service
 public class SenderReceiverService {
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm");
     static Pattern pattern = Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b");
     static Pattern patternSender = Pattern.compile("from <(.*?)>");
     static Pattern patternFESid = Pattern.compile("got:250 (.*?) message");
     static String regex = "QUEUE\\(\\[(.*?)\\]\\)";
     static String ipv4Regex = "relayed via ((?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})";
     static String ipv4Regex2 = "^((25[0-5]|(2[0-4]|1\\d|[1-9]|)\\d)\\.?\\b){4}$";
-
     static Pattern pattern2 = Pattern.compile(regex);
     static Pattern patternIP = Pattern.compile(ipv4Regex);
     static Pattern patternIP2 = Pattern.compile(ipv4Regex2);
-
     static DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
-    private static String[] getDirectoriesInTimeRange(String startTime, String endTime, String op, String couloir) {
+    public static String[] getDirectoriesInTimeRange(String startTime, String endTime, String op, String couloir) {
         List<String> filteredDirectories = new ArrayList<>();
         String[] baseDirectories = {
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01\\",
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02\\"
         };
 
-
         if (Objects.equals(op, "couloirSearch")) {
             baseDirectories = new String[]{
                     "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\" + couloir + "02\\",
-
             };
         } else if (Objects.equals(op, "couloirSearch2")) {
             baseDirectories = new String[]{
                     "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\" + couloir + "02\\",
                     "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\" + couloir + "01\\",
-
             };
-
-
         } else if (Objects.equals(op, "receiverSearch")) {
             baseDirectories = new String[]{
                     "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX01",
@@ -67,94 +61,129 @@ public class SenderReceiverService {
                     "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX03",
                     "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\MX\\MX04",
             };
-
-
         } else if (Objects.equals(op, "receiverFesSearch")) {
             baseDirectories = new String[]{
                     "C:\\Users\\wassi\\OneDrive\\Bureau\\Log\\FES01",
                     "C:\\Users\\wassi\\OneDrive\\Bureau\\Log\\FES02",
-
             };
-
         }
-
 
         try {
             // Parse start and end times
             LocalDateTime startDateTime = LocalDateTime.parse(startTime, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
             LocalDateTime endDateTime = LocalDateTime.parse(endTime, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            LocalDateTime nextFileDateTime = null;
+            DateTimeFormatter fileNameFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm");
 
             // Iterate through the date range
             for (String baseDirectory : baseDirectories) {
-                LocalDate currentDate = startDateTime.toLocalDate();
-                DateTimeFormatter fileNameFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm");
-                while (!currentDate.isAfter(endDateTime.toLocalDate())) {
-                    String dateDirectoryName = currentDate.toString();
-                    String directoryPath = baseDirectory;
+                try (Stream<Path> paths = Files.list(Paths.get(baseDirectory))) {
+                    List<String> fileNames = paths.filter(Files::isRegularFile)
+                            .map(Path::getFileName)
+                            .map(Path::toString)
+                            .sorted() // Sort the file names to ensure they are in chronological order
+                            .toList();
+                    Map<String, LocalDateTime> firstFileDateTimeMap = new HashMap<>();
+                    Map<String, LocalDateTime> lastFileDateTimeMap = new HashMap<>();
 
-                    try (Stream<Path> paths = Files.list(Paths.get(directoryPath))) {
-                        List<String> fileNames = paths.filter(Files::isRegularFile)
-                                .map(Path::getFileName)
-                                .map(Path::toString)
-                                .sorted() // Sort the file names to ensure they are in chronological order
-                                .toList();
+// Pass 1: Identify the first and last file for each date
+                    for (String fileName : fileNames) {
+                        LocalDateTime fileDateTime = parseFileDateTime(fileName);
+                        String fileDate = fileName.substring(0, 10); // Extract the date part (yyyy-MM-dd)
 
-                        for (int i = 0; i < fileNames.size(); i++) {
-                            String fileName = fileNames.get(i);
-                            LocalDateTime fileDateTime;
-                            if (fileName.length() < 16) {
-                                fileDateTime = LocalDateTime.parse(fileName.substring(0, 10) + "_00-00", fileNameFormatter);
+                        if (!firstFileDateTimeMap.containsKey(fileDate) || fileDateTime.isBefore(firstFileDateTimeMap.get(fileDate))) {
+                            firstFileDateTimeMap.put(fileDate, fileDateTime);
+                        }
+                        if (!lastFileDateTimeMap.containsKey(fileDate) || fileDateTime.isAfter(lastFileDateTimeMap.get(fileDate))) {
+                            lastFileDateTimeMap.put(fileDate, fileDateTime);
+                        }
+                    }
+
+// Pass 2: Process each file and adjust the first and last file of the day
+                    for (int i = 0; i < fileNames.size(); i++) {
+                        String fileName = fileNames.get(i);
+                        LocalDateTime fileDateTime = parseFileDateTime(fileName);
+                        String fileDate = fileName.substring(0, 10); // Extract the date part (yyyy-MM-dd)
+
+                        if (fileDateTime.equals(firstFileDateTimeMap.get(fileDate))) {
+                            // First file of the day
+                            nextFileDateTime = LocalDateTime.parse(fileDate + "_00-00", fileNameFormatter);
+                        } else if (fileDateTime.equals(lastFileDateTimeMap.get(fileDate))) {
+                            // Last file of the day
+                            nextFileDateTime = LocalDateTime.parse(fileDate + "_23-59", fileNameFormatter);
+                        } else {
+                            // Average file
+                            String nextFileName = fileNames.get(i + 1);
+                            if (nextFileName.length() >= 16) {
+                                nextFileDateTime = LocalDateTime.parse(nextFileName.substring(0, 16), fileNameFormatter);
                             } else {
-                                fileDateTime = LocalDateTime.parse(fileName.substring(0, 16), fileNameFormatter);
+                                throw new IllegalArgumentException("Invalid nextFileName format: " + nextFileName);
                             }
-                            LocalDateTime nextFileDateTime = null;
-                            if (!op.equals("receiverSearch")) {
+                        }
+
+                        boolean isFileInTimeRange = (fileDateTime != null)
+                                && ((fileDateTime.isAfter(startDateTime) && fileDateTime.isBefore(endDateTime.plusMinutes(1)))
+                                || (fileDateTime.isEqual(startDateTime) || fileDateTime.isEqual(endDateTime))
+                                || (startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
+                                || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime)));
+
+                        if (Objects.equals(op, "logSearch")) {
+                            if (isFileInTimeRange) {
+                                filteredDirectories.add(Paths.get(baseDirectory, fileName).toString());
+                            }
+
+                        } else {
+                            if (!Objects.equals(op, "receiverSearch")) {
                                 if (i == fileNames.size() - 1) {
-                                    nextFileDateTime = LocalDateTime.parse(fileName.substring(0, 10) + "_23-59", fileNameFormatter);
+                                    nextFileDateTime = LocalDateTime.parse(fileName.substring(0, 10) + "_23-59", DATE_TIME_FORMAT);
                                 } else {
                                     String nextFileName = fileNames.get(i + 1);
-                                    nextFileDateTime = LocalDateTime.parse(nextFileName.substring(0, 16), fileNameFormatter);
+                                    nextFileDateTime = parseFileDateTime(nextFileName);
                                 }
                             }
 
-                            boolean isFileInTimeRange = fileDateTime.isAfter(startDateTime) && fileDateTime.isBefore(endDateTime.plusMinutes(1));
-                            boolean isNextFileAfterEndTime = nextFileDateTime == null || nextFileDateTime.isAfter(endDateTime);
-//*/
-                            Path path = Paths.get(directoryPath, fileName);
-                            String pathString = path.toString();
-                            if (Objects.equals(op, "logSearch") || Objects.equals(op, "receiverFesSearch")) {
+                            if (Objects.equals(op, "receiverFesSearch")) {
                                 if ((startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
                                         || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime))) {
-                                    filteredDirectories.add(pathString);
+                                    filteredDirectories.add(Paths.get(baseDirectory, fileName).toString());
                                 }
                             } else if (Objects.equals(op, "couloirSearch2") || Objects.equals(op, "couloirSearch")) {
                                 startDateTime = startDateTime.minusMinutes(20);
                                 if (startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime)) {
-                                    filteredDirectories.add(pathString);
+                                    filteredDirectories.add(Paths.get(baseDirectory, fileName).toString());
                                 }
-
                             } else if (Objects.equals(op, "receiverSearch")) {
                                 if (startDateTime.isAfter(fileDateTime)) {
-                                    filteredDirectories.add(pathString);
+                                    filteredDirectories.add(Paths.get(baseDirectory, fileName).toString());
                                 }
-
                             }
                         }
-                    } catch (NoSuchFileException e) {
-                        // Handle case where file does not exist
-                        System.err.println("File does not exist: " + e.getFile());
-                    } catch (IOException e) {
-                        e.printStackTrace();
                     }
-                    currentDate = currentDate.plusDays(1); // Move to the next day
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
             }
-        } catch (DateTimeParseException e) {
-            // Handle parsing or I/O exception
+        } catch (Exception e) {
             e.printStackTrace();
         }
+
         return filteredDirectories.toArray(new String[0]);
     }
+
+    private static LocalDateTime parseFileDateTime(String fileName) {
+        try {
+            if (fileName.length() >= 16) {
+                return LocalDateTime.parse(fileName.substring(0, 16), DATE_TIME_FORMAT);
+            } else if (fileName.length() >= 10) {
+                return LocalDate.parse(fileName.substring(0, 10), DATE_FORMAT).atStartOfDay();
+            } else {
+                return null; // Invalid format
+            }
+        } catch (Exception e) {
+            return null; // Parsing failed, return null
+        }
+    }
+
 
     public static List<Email> searchInFesSender(Path path, String mail, String receiver) throws IOException {
         List<Email> emails = new ArrayList<>();
@@ -219,7 +248,7 @@ public class SenderReceiverService {
                                     processEmail = true;  // Set flag to process this email
                                 }
                             }
-                        } else if (line.contains("[" + email.getId() + "] rule(Disc-Kaspersky-virus)")) {
+                        } else if (line.contains("[" + email.getId() + "] rule(Disc-Kaspersky-virus) discarded the message")) {
                             email.setResult("Rejected(mail considered as a virus)");
                         } else if (line.contains("[" + email.getId() + "] message body rejected, got:579 message content is not acceptable here")) {
                             email.setResult("Rejected(mail content is not acceptable)");
@@ -313,6 +342,77 @@ public class SenderReceiverService {
     // TO DELETE THIS FUNCTION
 
 
+    private static boolean searchCouloir(Path path, Email email) {
+        String couloirID = String.valueOf(email.getCouloirID());
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(Files.newInputStream(path), StandardCharsets.UTF_8), 8192)) {
+            String line;
+            boolean couloirIDFound = false;
+
+            while ((line = reader.readLine()) != null) {
+                if (line.contains(" QUEUE([" + couloirID + "]) ")) {
+                    couloirIDFound = true;
+                    email.setCouloir(path.getParent().getFileName().toString());
+                    break;
+                }
+            }
+
+            if (couloirIDFound) {
+                while ((line = reader.readLine()) != null && !line.contains("QUEUE([" + couloirID + "]) deleted")) {
+                    if (line.contains(String.valueOf(email.getCouloirID())) && line.contains("relayed via")) {
+                        email.setResult("Delivered couloir verified");
+                        return true;
+                    }
+                    if (line.contains(String.valueOf(email.getCouloirID())) && line.contains("rule(Disc-Kaspersky-virus) discarded the message")) {
+                        email.setResult("Rejected(mail considered as a virus)");
+                        return true;
+                    }
+                    if (line.contains(String.valueOf(email.getCouloirID())) && line.contains("message body rejected, got:579 message content is not acceptable here")) {
+                        email.setResult("Rejected(mail content is not acceptable)");
+                        return true;
+                    }
+                    if (line.contains(String.valueOf(email.getCouloirID())) && line.contains("composed message exceeds the size limit")) {
+                        email.setResult("Mail or attachment exceeds size limit");
+                        return true;
+                    }
+                    if (line.contains(String.valueOf(email.getCouloirID())) && line.contains("failed: account is full")) {
+                        email.setResult("Recipient inbox is full");
+                        return true;
+                    }
+                    if (line.contains(String.valueOf(email.getCouloirID())) && (
+                            (line.contains("message discarded without processing")) ||
+                                    (line.contains("NoSuchUser")) ||
+                                    (line.contains("Recipient address rejected: User unknown")) ||
+                                    (line.contains("host name is unknown ")) ||
+                                    (line.contains("mailbox unavailable ")) ||
+                                    (line.contains("no mailbox here by that name ")) ||
+                                    (line.contains("mailbox not found")))) {
+                        email.setResult("Rejected(Wrong mail address)");
+                        return true;
+                    }
+                    if (line.contains(String.valueOf(email.getCouloirID())) && (
+                            (line.contains("This mailbox is disabled")) ||
+                                    (line.contains("failed: : DNS A-record is empty")) ||
+                                    (line.contains("batch delayed ")) ||
+                                    (line.contains("550 authentication required")) ||
+                                    (line.contains(" Relay access denied")) ||
+                                    (line.contains("Session encryption is required")))) {
+                        email.setResult("Not delivered");
+                        return true;
+                    }
+                    if (line.contains(String.valueOf(email.getCouloirID())) && line.contains("rule(discard_from_MX) discarded the message")) {
+                        email.setResult("discard from MX");
+                        return true;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return false;
+    }
+
     private static void CouloirIdExecutor(Email email) {
         String pattern = "yyyy-MM-dd'T'HH:mm:ss";
         DateFormat df = new SimpleDateFormat(pattern);
@@ -322,14 +422,14 @@ public class SenderReceiverService {
         System.out.println(email.getCouloirID() + "  " + ipAdressConclusion(email.getIPAdress()) + " " + email.getDate().toInstant().atZone(ZoneId.of("UTC+1")));
         System.out.println("CouloirFiles: " + Arrays.toString(logDirectories));
 
-        Set<String> processedFiles = new HashSet<>();
         ExecutorService executor = Executors.newCachedThreadPool();
         List<Future<Boolean>> futures = new ArrayList<>();
 
+        // Search initial log directories
         for (String logDirectory : logDirectories) {
             try (Stream<Path> paths = Files.walk(Paths.get(logDirectory))) {
                 paths.filter(Files::isRegularFile).forEach(path -> {
-                    futures.add(executor.submit(() -> searchCouloir(path, email, processedFiles)));
+                    futures.add(executor.submit(() -> searchCouloir(path, email)));
                 });
             } catch (IOException e) {
                 e.printStackTrace();
@@ -348,92 +448,56 @@ public class SenderReceiverService {
             e.printStackTrace();
         }
 
+        // If not found in initial files, search all files in base directories
+        if (!found) {
+            String[] baseDirectories = new String[]{
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\" + ipAdressConclusion(email.getIPAdress()) + "02\\",
+            };
+
+            List<Future<Boolean>> additionalFutures = new ArrayList<>();
+            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+            for (String baseDirectory : baseDirectories) {
+                try (Stream<Path> paths = Files.walk(Paths.get(baseDirectory))) {
+                    paths.filter(Files::isRegularFile)
+                            .filter(path -> {
+                                String fileName = path.getFileName().toString();
+                                // Extract the date part from the file name
+                                String fileDateStr = fileName.substring(0, 10); // Assuming yyyy-MM-dd format
+                                LocalDate fileDate = LocalDate.parse(fileDateStr, dateFormatter);
+                                LocalDate emailDate = email.getDate().toInstant().atZone(ZoneId.of("UTC+1")).toLocalDate();
+                                // Check if the file date matches the email date
+                                return fileDate.equals(emailDate);
+                            })
+                            .forEach(path -> {
+                                additionalFutures.add(executor.submit(() -> searchCouloir(path, email)));
+                            });
+                } catch (AccessDeniedException e) {
+                    System.err.println("Access denied to directory: " + baseDirectory);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            try {
+                for (Future<Boolean> future : additionalFutures) {
+                    if (future.get()) {
+                        found = true;
+                        break;
+                    }
+                }
+            } catch (InterruptedException | ExecutionException e) {
+                e.printStackTrace();
+            }
+        }
+
         executor.shutdown();
         try {
             executor.awaitTermination(1, TimeUnit.HOURS);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-
-        // If not found in initial files, search in remaining files
-        if (!found) {
-            List<String> remainingFiles = getRemainingFiles(logDirectories, processedFiles);
-            for (String filePath : remainingFiles) {
-                Path path = Paths.get(filePath);
-                if (searchCouloir(path, email, processedFiles)) {
-                    break;
-                }
-            }
-        }
     }
-
-    private static List<String> getRemainingFiles(String[] processedDirectories, Set<String> processedFiles) {
-        List<String> remainingFiles = new ArrayList<>();
-
-        for (String baseDirectory : processedDirectories) {
-            try (Stream<Path> paths = Files.walk(Paths.get(baseDirectory))) {
-                paths.filter(Files::isRegularFile).forEach(path -> {
-                    if (!processedFiles.contains(path.toString())) {
-                        remainingFiles.add(path.toString());
-                    }
-                });
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-        return remainingFiles;
-    }
-
-    private static boolean searchCouloir(Path path, Email email, Set<String> processedFiles) {
-        String couloirID = String.valueOf(email.getCouloirID());
-        processedFiles.add(path.toString());
-
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(Files.newInputStream(path), StandardCharsets.UTF_8), 8192)) {
-            String line;
-            boolean couloirIDFound = false;
-
-            while ((line = reader.readLine()) != null) {
-                if (line.contains(" QUEUE([" + couloirID + "]) ")) {
-                    couloirIDFound = true;
-                    email.setCouloir(path.getParent().getFileName().toString());
-                    break;
-                }
-            }
-
-            if (couloirIDFound) {
-                while ((line = reader.readLine()) != null && !line.contains("QUEUE([" + couloirID + "]) deleted")) {
-                    if (line.contains("relayed via")) {
-                        email.setResult("Delivered couloir verified");
-                        return true;
-                    } else if (line.contains("rule(Disc-Kaspersky-virus)")) {
-                        email.setResult("Rejected(mail considered as a virus)");
-                        return true;
-                    } else if (line.contains("message body rejected, got:579 message content is not acceptable here")) {
-                        email.setResult("Rejected(mail content is not acceptable)");
-                        return true;
-                    } else if (line.contains("composed message exceeds the size limit")) {
-                        email.setResult("Mail or attachment exceeds size limit");
-                        return true;
-                    } else if (line.contains("failed: account is full")) {
-                        email.setResult("Recipient inbox is full");
-                        return true;
-                    } else if (line.contains("message discarded without processing")) {
-                        email.setResult("Rejected(Wrong mail address)");
-                        return true;
-                    } else if (line.contains("rule(discard_from_MX)")) {
-                        email.setResult("discard from MX");
-                        return true;
-                    }
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        return false;
-    }
-
 
     //********* Receiver Functions   **********//
     public static List<Email> readLog(Path path, String receiverMail, String word2) throws IOException {
@@ -471,7 +535,7 @@ public class SenderReceiverService {
                         }
                         if (line.contains("relayed via")) {
                             email.setResult("Delivered");
-                        } else if (line.contains("rule(Disc-Kaspersky-spam)")) {
+                        } else if (line.contains("rule(Disc-Kaspersky-spam) discarded the message")) {
                             email.setResult("Rejected(mail considered as a spam)");
                         } else if (line.contains("composed message exceeds the size limit")) {
                             email.setResult("Mail or attaechement exceed size limit");
@@ -566,7 +630,7 @@ public class SenderReceiverService {
                         line.contains("QUEUE([" + email.getCouloirID() + "])") &&
                         !line.contains("QUEUE([" + email.getCouloirID() + "]) deleted")) {
                     while ((line = reader.readLine()) != null) {
-                        if (line.contains("[" + email.getCouloirID() + "] rule(Disc-Kaspersky-virus)")) {
+                        if (line.contains("[" + email.getCouloirID() + "] rule(Disc-Kaspersky-virus) discarded the message")) {
                             email.setResult("Rejected(mail considered as a virus)");
                         }
 
@@ -621,6 +685,7 @@ public class SenderReceiverService {
         List<Email> resultEmails = new ArrayList<>();
         CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
         String[] directories = getDirectoriesInTimeRange(d1, d2, "logSearch", "none");
+
         System.out.println("Directories: " + Arrays.toString(directories));
        /* String[] directories = {
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01",

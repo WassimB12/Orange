@@ -48,12 +48,12 @@ public class EmailController {
         return expSer.senderMailStatus(mail, mail2, d1, d2);
     }
 
-    @GetMapping("/log/{id}/{op}/{ipAd}")
+    @GetMapping("/log/{id}/{op}/{ipAd}/{date}")
 
     public String logD(@PathVariable("id") String id, @PathVariable("op") int op,
-                       @PathVariable("ipAd") String ipAdress) throws IOException, ExecutionException, InterruptedException {
+                       @PathVariable("ipAd") String ipAdress, @PathVariable("date") String date) throws IOException, ExecutionException, InterruptedException {
 
-        return logDetails.searchLogInFiles(id, op, ipAdress);
+        return logDetails.searchLogInFiles(id, op, ipAdress, date);
     }
 
 
