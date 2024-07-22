@@ -31,6 +31,8 @@ public class SenderReceiverService {
     static Pattern patternSender = Pattern.compile("from <(.*?)>");
     static Pattern patternFESid = Pattern.compile("got:250 (.*?) message");
     static String regex = "QUEUE\\(\\[(.*?)\\]\\)";
+    static Pattern patternID = Pattern.compile("DEQUEUER \\[(\\d+)\\]");
+
     static String ipv4Regex = "relayed via ((?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})";
     static String ipv4Regex2 = "^((25[0-5]|(2[0-4]|1\\d|[1-9]|)\\d)\\.?\\b){4}$";
     static Pattern pattern2 = Pattern.compile(regex);
@@ -63,8 +65,8 @@ public class SenderReceiverService {
             };
         } else if (Objects.equals(op, "receiverFesSearch")) {
             baseDirectories = new String[]{
-                    "C:\\Users\\wassi\\OneDrive\\Bureau\\Log\\FES01",
-                    "C:\\Users\\wassi\\OneDrive\\Bureau\\Log\\FES02",
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01",
+                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02",
             };
         }
 
@@ -500,94 +502,90 @@ public class SenderReceiverService {
     }
 
     //********* Receiver Functions   **********//
-    public static List<Email> readLog(Path path, String receiverMail, String word2) throws IOException {
+    public static List<Email> readLog(Path path, String receiverMail, String sender) throws IOException {
         List<Email> emails = new ArrayList<>();
         boolean accountIsFullFound = false;
         boolean exceedsSizeLimitFound = false;
 
         try (BufferedReader reader = Files.newBufferedReader(path)) {
             String line;
+            List<String> linesBuffer = new ArrayList<>();
+            int dequeuerLineIndex = -1;
+
             while ((line = reader.readLine()) != null) {
+                linesBuffer.add(line);
 
-                if (line.contains("from <")) {
+                if (line.contains("DEQUEUER") && line.contains(receiverMail)) {
                     Email email = new Email();
+                    email.setReceiver(receiverMail);
 
-                    Matcher matcher = pattern.matcher(line);
-                    while (matcher.find()) {
-                        email.setSender(matcher.group());
-                    }
-
-                    Matcher matcherId = pattern2.matcher(line);
-
+                    // Extract ID from DEQUEUER line
+                    Matcher matcherId = patternID.matcher(line);
                     if (matcherId.find()) {
                         String id = matcherId.group(1);
                         email.setId(Integer.parseInt(id));
                     }
 
-                    while ((line = reader.readLine()) != null && !line.contains("deleted")) {
+                    // Read the block to find the email result
+                    while ((line = reader.readLine()) != null && !line.contains("QUEUE([" + email.getId() + "]) deleted")) {
+                        linesBuffer.add(line);
 
-                        if (line.contains("message accepted")) {
-                            Matcher matcher1 = patternFESid.matcher(line);
+
+                        // Extract date and FES
+                        String fileName = path.getFileName().toString().substring(0, Math.min(10, path.getFileName().toString().length()));
+                        String extractedLine = line.substring(0, Math.min(8, line.length()));
+                        String dateString = fileName + "T" + extractedLine;
+
+                        LocalDateTime dateTime = LocalDateTime.parse(dateString, formatter);
+                        email.setDate(Date.from(dateTime.atZone(ZoneId.of("UTC+1")).toInstant()));
+                        email.setFes(path.getParent().getFileName().toString());
+                    }
+
+                    // Go back in linesBuffer to find the sender
+                    for (int i = linesBuffer.size() - 1; i >= 0; i--) {
+                        String bufferedLine = linesBuffer.get(i);
+                        if (bufferedLine.contains("from <") && bufferedLine.contains(String.valueOf(email.getId()))) {
+                            Matcher matcherSender = patternSender.matcher(bufferedLine);//continue here
+                            if (matcherSender.find()) {
+                                email.setSender(matcherSender.group(1));
+                                break;
+                            }
+                        }
+                        if (bufferedLine.contains("message accepted") && bufferedLine.contains("" + email.getId())) {
+                            Matcher matcher1 = patternFESid.matcher(bufferedLine);
                             if (matcher1.find()) {
                                 String fesId = matcher1.group(1);
                                 email.setCouloirID(Integer.parseInt(fesId));
                             }
                         }
-                        if (line.contains("relayed via")) {
+                        if (bufferedLine.contains("relayed via") && bufferedLine.contains("" + email.getId())) {
                             email.setResult("Delivered");
-                        } else if (line.contains("rule(Disc-Kaspersky-spam) discarded the message")) {
+                        } else if (bufferedLine.contains("rule(Disc-Kaspersky-spam) discarded the message") && bufferedLine.contains("" + email.getId())) {
                             email.setResult("Rejected(mail considered as a spam)");
-                        } else if (line.contains("composed message exceeds the size limit")) {
-                            email.setResult("Mail or attaechement exceed size limit");
+                        } else if (bufferedLine.contains("composed message exceeds the size limit") && bufferedLine.contains("" + email.getId())) {
+                            email.setResult("Mail or attachment exceeds size limit");
                             exceedsSizeLimitFound = true;
-                        } else if (//line.contains("DEQUEUER [" + email.getId() + "]") &&
-                                line.contains("failed: account is full")) {
+                        } else if (bufferedLine.contains("failed: account is full") && bufferedLine.contains("" + email.getId())) {
                             email.setResult("recipient inbox is full");
                             accountIsFullFound = true;
-                        } else if (line.contains("[" + email.getId() + "] message body rejected, got:579 message content is not acceptable here")) {
+                        } else if (bufferedLine.contains("[" + email.getId() + "] message body rejected, got:579 message content is not acceptable here")) {
                             email.setResult("Rejected(mail content is not acceptable)");
-
-                        } else if (line.contains("DEQUEUER [" + email.getId() + "]") && line.contains("message discarded without processing")
-                                && !accountIsFullFound &&
-                                !exceedsSizeLimitFound) {
-                            email.setResult("Rejected(Wrong mail adress)");
+                        } else if (bufferedLine.contains("DEQUEUER [" + email.getId() + "]") && line.contains("message discarded without processing")
+                                && !accountIsFullFound && !exceedsSizeLimitFound) {
+                            email.setResult("Rejected(Wrong mail address)");
                         }
-                        if (line.contains("DEQUEUER") && line.contains(receiverMail)) {
-                            matcher = pattern.matcher(line);
-                            while (matcher.find()) {
-                                email.setReceiver(matcher.group());
-                            }
-                            String fileName = path.getFileName().toString().substring(0, Math.min(10, path.getFileName().toString().length()));
-                            // Copy 11 characters from the actual line
-                            String extractedLine = line.substring(0, Math.min(8, line.length()));
-                            String dateString = (fileName + "T" + extractedLine);
-
-                            LocalDateTime dateTime = LocalDateTime.parse(dateString, formatter);
-                            email.setDate(Date.from(dateTime.atZone(ZoneId.of("UTC+1")).toInstant()));
-                            email.setFes(path.getParent().getFileName().toString());
-
-                        }
-
-
                     }
-
-                    if (Objects.equals(email.getReceiver(), receiverMail)) {
-
-                        // email.setCouloir(executorFesReceiver(email.getId(), String.valueOf(email.getDate())));
+                    if (Objects.equals(sender, email.getSender()) || Objects.equals(sender, "all")) {
                         searchFesIdMXExecutor(email, email.getDate());
 
-
                         emails.add(email);
-
+                        linesBuffer.clear();
                     }
-
                 }
             }
         }
 
         return emails;
-
-
     }
 
     public static void searchFesIdMXExecutor(Email email, Date d1) {
@@ -727,14 +725,13 @@ public class SenderReceiverService {
         return futureResult;
     }
 
-    public CompletableFuture<List<Email>> checkReceiver(String receiverMail, String d1, String d2) {
+    public CompletableFuture<List<Email>> checkReceiver(String receiverMail, String sender, String d1, String d2) {
         List<Email> resultEmails = new ArrayList<>();
         CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
 
         String[] directories = getDirectoriesInTimeRange(d1, d2, "receiverSearch", "none"); //@@@
         System.out.println("Directories: " + Arrays.toString(directories));
 
-        String word2 = "from <";
 
         ExecutorService executor = Executors.newCachedThreadPool();
         // to review this directory filtring process and compare it to the fesSearcher
@@ -746,7 +743,7 @@ public class SenderReceiverService {
                         .forEach(path -> {
                             executor.submit(() -> {
                                 try {
-                                    List<Email> emails = readLog(path, receiverMail, word2);
+                                    List<Email> emails = readLog(path, receiverMail, sender);
                                     synchronized (resultEmails) {
                                         resultEmails.addAll(emails);
                                     }
@@ -773,7 +770,6 @@ public class SenderReceiverService {
     }
 
 }
-
 
 
 

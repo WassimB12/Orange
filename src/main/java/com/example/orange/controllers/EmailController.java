@@ -40,6 +40,8 @@ public class EmailController {
         return senderReceiverService.senderMailStatus(mail, mail2, d1, d2);
     }
 
+    @Cacheable("emails")
+
     @GetMapping("/test/{id}/{id2}/{d1}/{d2}")
     public CompletableFuture<List<Email>> test(@PathVariable("id")
                                                String mail, @PathVariable("id2")
@@ -47,6 +49,8 @@ public class EmailController {
 
         return expSer.senderMailStatus(mail, mail2, d1, d2);
     }
+
+    @Cacheable("emails")
 
     @GetMapping("/log/{id}/{op}/{ipAd}/{date}")
 
@@ -56,13 +60,15 @@ public class EmailController {
         return logDetails.searchLogInFiles(id, op, ipAdress, date);
     }
 
+    @Cacheable("emails")
 
-    @GetMapping("/receiver/{id}/{d1}/{d2}")
+    @GetMapping("/receiver/{id}/{id2}/{d1}/{d2}")
 
-    public CompletableFuture<List<Email>> receiverStatus(@PathVariable("id")
-                                                         String mail, @PathVariable("d1") String d1, @PathVariable("d2") String d2) {
+    public CompletableFuture<List<Email>> receiverStatus
+            (@PathVariable("id") String mail, @PathVariable("id2") String mail2,
+             @PathVariable("d1") String d1, @PathVariable("d2") String d2) {
 
-        return senderReceiverService.checkReceiver(mail, d1, d2);
+        return senderReceiverService.checkReceiver(mail, mail2, d1, d2);
     }
 
 
