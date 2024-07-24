@@ -362,7 +362,7 @@ public class SenderReceiverService {
             if (couloirIDFound) {
                 while ((line = reader.readLine()) != null && !line.contains("QUEUE([" + couloirID + "]) deleted")) {
                     if (line.contains(String.valueOf(email.getCouloirID())) && line.contains("relayed via")) {
-                        email.setResult("Delivered couloir verified");
+                        email.setResult("Delivered");//delivered couloir verified
                         return true;
                     }
                     if (line.contains(String.valueOf(email.getCouloirID())) && line.contains("rule(Disc-Kaspersky-virus) discarded the message")) {
