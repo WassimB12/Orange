@@ -4,6 +4,8 @@ import com.example.orange.entities.DomainList;
 import com.example.orange.repository.DomainRepository;
 import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.List;
@@ -35,7 +38,8 @@ public class ScreenshotService {
     DomainRepository domainRepository;
 
 
-    public static File takeScreenshotAndSendEmail(String url, String mail, String receiver, int op) throws IOException, InterruptedException, MessagingException {
+    public static File takeScreenshotAndSendEmail(String url, String mail, String receiver, int op)
+            throws IOException, InterruptedException, MessagingException {
         // Set up the WebDriver (use the correct path to your WebDriver executable)
         System.setProperty("webdriver.chrome.driver", "src/main/resources/static/chromedriver.exe");
         WebDriver driver = new ChromeDriver();
@@ -47,7 +51,10 @@ public class ScreenshotService {
 
         WebElement button = driver.findElement(By.id("submit"));
         button.click();
-        Thread.sleep(10000);
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofHours(2));
+        WebElement chart = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("chart")));
+
+        Thread.sleep(700);
 
         // Retrieve the content of the <p> element with id "rapport"
         WebElement rapportElement = driver.findElement(By.id("rapport"));
@@ -137,7 +144,7 @@ public class ScreenshotService {
         }
     }
 
-    @Scheduled(cron = "0 03 13 * * *") // Run every day at midnight
+    @Scheduled(cron = "00 53 9 * * *") // Run every day at midnight
 
     public void scheduleTask() {
         List<DomainList> domainList = domainRepository.findAll();

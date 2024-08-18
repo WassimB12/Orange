@@ -18,9 +18,13 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Service
@@ -32,7 +36,7 @@ public class SenderReceiverService {
     static Pattern patternFESid = Pattern.compile("got:250 (.*?) message");
     static String regex = "QUEUE\\(\\[(.*?)\\]\\)";
     static Pattern patternID = Pattern.compile("DEQUEUER \\[(\\d+)\\]");
-
+    static int batchSize = 1000;
     static String ipv4Regex = "relayed via ((?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})";
     static String ipv4Regex2 = "^((25[0-5]|(2[0-4]|1\\d|[1-9]|)\\d)\\.?\\b){4}$";
     static Pattern pattern2 = Pattern.compile(regex);
@@ -40,7 +44,8 @@ public class SenderReceiverService {
     static Pattern patternIP2 = Pattern.compile(ipv4Regex2);
     static DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
-    public static String[] getDirectoriesInTimeRange(String startTime, String endTime, String op, String couloir) {
+    public static String[] getDirectoriesInTimeRange
+            (String startTime, String endTime, String op, String couloir) {
         List<String> filteredDirectories = new ArrayList<>();
         String[] baseDirectories = {
                 "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01\\",
@@ -129,9 +134,10 @@ public class SenderReceiverService {
                                 || (startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
                                 || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime)));
 
+                        Path path = Paths.get(baseDirectory, fileName);
                         if (Objects.equals(op, "logSearch")) {
                             if (isFileInTimeRange) {
-                                filteredDirectories.add(Paths.get(baseDirectory, fileName).toString());
+                                filteredDirectories.add(path.toString());
                             }
 
                         } else {
@@ -147,16 +153,16 @@ public class SenderReceiverService {
                             if (Objects.equals(op, "receiverFesSearch")) {
                                 if ((startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
                                         || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime))) {
-                                    filteredDirectories.add(Paths.get(baseDirectory, fileName).toString());
+                                    filteredDirectories.add(path.toString());
                                 }
                             } else if (Objects.equals(op, "couloirSearch2") || Objects.equals(op, "couloirSearch")) {
                                 startDateTime = startDateTime.minusMinutes(20);
                                 if (startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime)) {
-                                    filteredDirectories.add(Paths.get(baseDirectory, fileName).toString());
+                                    filteredDirectories.add(path.toString());
                                 }
                             } else if (Objects.equals(op, "receiverSearch")) {
                                 if (startDateTime.isAfter(fileDateTime)) {
-                                    filteredDirectories.add(Paths.get(baseDirectory, fileName).toString());
+                                    filteredDirectories.add(path.toString());
                                 }
                             }
                         }
@@ -186,6 +192,19 @@ public class SenderReceiverService {
         }
     }
 
+    public static List<String[]> getDirectoriesInTimeRangeBatch
+            (String startTime, String endTime, String op, String couloir, int batchSize) {
+        List<String[]> batchedDirectories = new ArrayList<>();
+        String[] allDirectories = getDirectoriesInTimeRange(startTime, endTime, op, couloir);
+
+        for (int i = 0; i < allDirectories.length; i += batchSize) {
+            int endIndex = Math.min(i + batchSize, allDirectories.length);
+            String[] batch = Arrays.copyOfRange(allDirectories, i, endIndex);
+            batchedDirectories.add(batch);
+        }
+
+        return batchedDirectories;
+    }
 
     public static List<Email> searchInFesSender(Path path, String mail, String receiver) throws IOException {
         List<Email> emails = new ArrayList<>();
@@ -288,24 +307,6 @@ public class SenderReceiverService {
         return emails;
     }
 
-    private static void processEmailsInParallel(List<Email> emails) {
-        ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-
-        List<Future<?>> futures = new ArrayList<>();
-        for (Email email : emails) {
-            futures.add(executorService.submit(() -> CouloirIdExecutor(email)));
-        }
-
-        for (Future<?> future : futures) {
-            try {
-                future.get();
-            } catch (InterruptedException | ExecutionException e) {
-                e.printStackTrace();
-            }
-        }
-
-        executorService.shutdown();
-    }
 
     static String ipAdressConclusion(String ipAddress) {
         if (ipAddress.equals("10.46.96.20")) {
@@ -341,13 +342,11 @@ public class SenderReceiverService {
         return ipAddress;
     }
 
-    // TO DELETE THIS FUNCTION
-
-
     private static boolean searchCouloir(Path path, Email email) {
         String couloirID = String.valueOf(email.getCouloirID());
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(Files.newInputStream(path), StandardCharsets.UTF_8), 8192)) {
+        try (BufferedReader reader = new BufferedReader
+                (new InputStreamReader(Files.newInputStream(path), StandardCharsets.UTF_8), 8192)) {
             String line;
             boolean couloirIDFound = false;
 
@@ -415,91 +414,8 @@ public class SenderReceiverService {
         return false;
     }
 
-    private static void CouloirIdExecutor(Email email) {
-        String pattern = "yyyy-MM-dd'T'HH:mm:ss";
-        DateFormat df = new SimpleDateFormat(pattern);
-        df.setTimeZone(TimeZone.getTimeZone("UTC+1"));  // Set the correct time zone for display
-        String date = df.format(email.getDate());
-        String[] logDirectories = getDirectoriesInTimeRange(date, date, "couloirSearch2", ipAdressConclusion(email.getIPAdress()));
-        System.out.println(email.getCouloirID() + "  " + ipAdressConclusion(email.getIPAdress()) + " " + email.getDate().toInstant().atZone(ZoneId.of("UTC+1")));
-        System.out.println("CouloirFiles: " + Arrays.toString(logDirectories));
+    // TO DELETE THIS FUNCTION
 
-        ExecutorService executor = Executors.newCachedThreadPool();
-        List<Future<Boolean>> futures = new ArrayList<>();
-
-        // Search initial log directories
-        for (String logDirectory : logDirectories) {
-            try (Stream<Path> paths = Files.walk(Paths.get(logDirectory))) {
-                paths.filter(Files::isRegularFile).forEach(path -> {
-                    futures.add(executor.submit(() -> searchCouloir(path, email)));
-                });
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-        boolean found = false;
-        try {
-            for (Future<Boolean> future : futures) {
-                if (future.get()) {
-                    found = true;
-                    break;
-                }
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            e.printStackTrace();
-        }
-
-        // If not found in initial files, search all files in base directories
-        if (!found) {
-            String[] baseDirectories = new String[]{
-                    "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\" + ipAdressConclusion(email.getIPAdress()) + "02\\",
-            };
-
-            List<Future<Boolean>> additionalFutures = new ArrayList<>();
-            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
-            for (String baseDirectory : baseDirectories) {
-                try (Stream<Path> paths = Files.walk(Paths.get(baseDirectory))) {
-                    paths.filter(Files::isRegularFile)
-                            .filter(path -> {
-                                String fileName = path.getFileName().toString();
-                                // Extract the date part from the file name
-                                String fileDateStr = fileName.substring(0, 10); // Assuming yyyy-MM-dd format
-                                LocalDate fileDate = LocalDate.parse(fileDateStr, dateFormatter);
-                                LocalDate emailDate = email.getDate().toInstant().atZone(ZoneId.of("UTC+1")).toLocalDate();
-                                // Check if the file date matches the email date
-                                return fileDate.equals(emailDate);
-                            })
-                            .forEach(path -> {
-                                additionalFutures.add(executor.submit(() -> searchCouloir(path, email)));
-                            });
-                } catch (AccessDeniedException e) {
-                    System.err.println("Access denied to directory: " + baseDirectory);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            try {
-                for (Future<Boolean> future : additionalFutures) {
-                    if (future.get()) {
-                        found = true;
-                        break;
-                    }
-                }
-            } catch (InterruptedException | ExecutionException e) {
-                e.printStackTrace();
-            }
-        }
-
-        executor.shutdown();
-        try {
-            executor.awaitTermination(1, TimeUnit.HOURS);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
 
     //********* Receiver Functions   **********//
     public static List<Email> readLog(Path path, String receiverMail, String sender) throws IOException {
@@ -600,7 +516,8 @@ public class SenderReceiverService {
 
 // work on this
         //  System.out.println("CouloirFiles: " + Arrays.toString(logDirectories));
-        ExecutorService executor = Executors.newCachedThreadPool();
+        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+
 
         try {
             for (String logDirectory : directories) {
@@ -678,18 +595,141 @@ public class SenderReceiverService {
         // Word not found in this file
     }
 
+    public static void processEmailsInParallel(List<Email> emails) {
+        ExecutorService executorService = Executors.newCachedThreadPool();
 
-    public CompletableFuture<List<Email>> senderMailStatus(String mail, String receiver, String d1, String d2) {
+        List<CompletableFuture<Void>> futures = emails.stream()
+                .map(email -> CompletableFuture.runAsync(() -> couloirIdExecutor(email, executorService), executorService))
+                .collect(Collectors.toList());
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        shutdownExecutorService(executorService);
+    }
+
+    private static void shutdownExecutorService(ExecutorService executorService) {
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(1, TimeUnit.HOURS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            executorService.shutdownNow();
+        }
+    }
+
+    private static void couloirIdExecutor(Email email, ExecutorService executorService) {
+        String pattern = "yyyy-MM-dd'T'HH:mm:ss";
+        DateFormat df = new SimpleDateFormat(pattern);
+        df.setTimeZone(TimeZone.getTimeZone("UTC+1"));
+        String date = df.format(email.getDate());
+
+        String[] logDirectories = getDirectoriesInTimeRange(date, date, "couloirSearch2", ipAdressConclusion(email.getIPAdress()));
+        System.out.println(email.getCouloirID() + "  " + ipAdressConclusion(email.getIPAdress()) + " " + email.getDate().toInstant().atZone(ZoneId.of("UTC+1")));
+        System.out.println("CouloirFiles: " + Arrays.toString(logDirectories));
+
+        List<CompletableFuture<Boolean>> futures = Arrays.stream(logDirectories)
+                .flatMap(logDirectory -> searchCouloirInDirectory(Paths.get(logDirectory), email, executorService).stream())
+                .collect(Collectors.toList());
+
+        boolean found = futures.stream().anyMatch(CompletableFuture::join);
+
+        if (!found) {
+            searchInBaseDirectories(email, executorService);
+        }
+    }
+
+    private static void searchInBaseDirectories(Email email, ExecutorService executorService) {
+        String[] baseDirectories = new String[]{
+                "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\" + ipAdressConclusion(email.getIPAdress()) + "02\\"
+        };
+
+        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+        for (String baseDirectory : baseDirectories) {
+            try (Stream<Path> paths = Files.walk(Paths.get(baseDirectory))) {
+                List<CompletableFuture<Boolean>> futures = paths.filter(Files::isRegularFile)
+                        .filter(path -> {
+                            String fileName = path.getFileName().toString();
+                            String fileDateStr = fileName.substring(0, 10);
+                            LocalDate fileDate = LocalDate.parse(fileDateStr, dateFormatter);
+                            LocalDate emailDate = email.getDate().toInstant().atZone(ZoneId.of("UTC+1")).toLocalDate();
+                            return fileDate.equals(emailDate);
+                        })
+                        .map(path -> CompletableFuture.supplyAsync(() -> searchCouloir(path, email), executorService))
+                        .collect(Collectors.toList());
+
+                if (futures.stream().anyMatch(CompletableFuture::join)) {
+                    break;
+                }
+            } catch (AccessDeniedException e) {
+                System.err.println("Access denied to directory: " + baseDirectory);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private static List<CompletableFuture<Boolean>> searchCouloirInDirectory(Path directory, Email email, ExecutorService executorService) {
+        List<CompletableFuture<Boolean>> futures = new ArrayList<>();
+        try (Stream<Path> paths = Files.walk(directory)) {
+            paths.filter(Files::isRegularFile)
+                    .forEach(path -> futures.add(CompletableFuture.supplyAsync(() -> searchCouloir(path, email), executorService)));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return futures;
+    }
+
+
+    public CompletableFuture<List<List<Email>>> senderMailStatusAsyncBatch
+            (String mail, String receiver, String d1, String d2, int batchSize) {
+        CompletableFuture<List<List<Email>>> futureResult = new CompletableFuture<>();
+        List<List<Email>> resultEmailsBatched = new ArrayList<>();
+        String[] directories = getDirectoriesInTimeRange(d1, d2, "logSearch", "none");
+
+        CompletableFuture.supplyAsync(() -> {
+            ExecutorService executor = Executors.newCachedThreadPool();
+            try {
+                List<CompletableFuture<Void>> tasks = new ArrayList<>();
+                for (String directory : directories) {
+                    Path start = Paths.get(directory);
+                    Files.walk(start)
+                            .filter(Files::isRegularFile)
+                            .forEach(path -> {
+                                CompletableFuture<Void> task = CompletableFuture.runAsync(() -> {
+                                    try {
+                                        List<Email> emails = searchInFesSender(path, mail, receiver);
+                                        synchronized (resultEmailsBatched) {
+                                            resultEmailsBatched.add(emails);
+                                        }
+                                    } catch (IOException e) {
+                                        e.printStackTrace(); // Handle or log the exception
+                                    }
+                                }, executor);
+                                tasks.add(task);
+                            });
+                }
+                CompletableFuture<Void> allTasks = CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]));
+                allTasks.get(); // Wait for all tasks to complete
+                futureResult.complete(resultEmailsBatched);
+            } catch (Exception e) {
+                futureResult.completeExceptionally(e);
+            }
+            return futureResult;
+        });
+
+        return futureResult;
+    }
+
+    public CompletableFuture<List<Email>> senderMailStatus
+            (String mail, String receiver, String d1, String d2) {
         List<Email> resultEmails = new ArrayList<>();
         CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
         String[] directories = getDirectoriesInTimeRange(d1, d2, "logSearch", "none");
 
-        System.out.println("Directories: " + Arrays.toString(directories));
-       /* String[] directories = {
-                "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES01",
-                "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\FES02"
-        };*/
-        ExecutorService executor = Executors.newCachedThreadPool();
+        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
         try {
             for (String directory : directories) {
@@ -728,13 +768,10 @@ public class SenderReceiverService {
     public CompletableFuture<List<Email>> checkReceiver(String receiverMail, String sender, String d1, String d2) {
         List<Email> resultEmails = new ArrayList<>();
         CompletableFuture<List<Email>> futureResult = new CompletableFuture<>();
+        String[] directories = getDirectoriesInTimeRange(d1, d2, "receiverSearch", "none");
 
-        String[] directories = getDirectoriesInTimeRange(d1, d2, "receiverSearch", "none"); //@@@
-        System.out.println("Directories: " + Arrays.toString(directories));
+        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
-
-        ExecutorService executor = Executors.newCachedThreadPool();
-        // to review this directory filtring process and compare it to the fesSearcher
         try {
             for (String directory : directories) {
                 Path start = Paths.get(directory);
@@ -768,8 +805,8 @@ public class SenderReceiverService {
         futureResult.complete(resultEmails);
         return futureResult;
     }
-
 }
+
 
 
 
