@@ -8,6 +8,8 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 
 import java.util.TimeZone;
@@ -28,13 +30,21 @@ public class OrangeApplication {
         SpringApplication.run(OrangeApplication.class, args);
         System.out.print(now());
 
+        PasswordEncoder encoder = new BCryptPasswordEncoder();
+        String rawPassword = "yourPassword";
+        String encodedPassword = encoder.encode(rawPassword);
 
+        System.out.print("Encoded Password: " + encodedPassword);
+
+        boolean matches = encoder.matches(rawPassword, encodedPassword);
+        System.out.println(" Password matches: " + matches);
     }
 
     @PostConstruct
     public void init() {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC+1"));
     }
+
 
 }
 
