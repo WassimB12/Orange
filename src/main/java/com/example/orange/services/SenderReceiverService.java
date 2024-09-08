@@ -7,7 +7,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -156,8 +155,9 @@ public class SenderReceiverService {
                                     filteredDirectories.add(path.toString());
                                 }
                             } else if (Objects.equals(op, "couloirSearch2") || Objects.equals(op, "couloirSearch")) {
-                                startDateTime = startDateTime.minusMinutes(20);
-                                if (startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime)) {
+                                /* startDateTime = startDateTime.minusMinutes(20);*/
+                                if ((startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
+                                        || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime))) { // TO REVIEW
                                     filteredDirectories.add(path.toString());
                                 }
                             } else if (Objects.equals(op, "receiverSearch")) {
@@ -192,19 +192,6 @@ public class SenderReceiverService {
         }
     }
 
-    public static List<String[]> getDirectoriesInTimeRangeBatch
-            (String startTime, String endTime, String op, String couloir, int batchSize) {
-        List<String[]> batchedDirectories = new ArrayList<>();
-        String[] allDirectories = getDirectoriesInTimeRange(startTime, endTime, op, couloir);
-
-        for (int i = 0; i < allDirectories.length; i += batchSize) {
-            int endIndex = Math.min(i + batchSize, allDirectories.length);
-            String[] batch = Arrays.copyOfRange(allDirectories, i, endIndex);
-            batchedDirectories.add(batch);
-        }
-
-        return batchedDirectories;
-    }
 
     public static List<Email> searchInFesSender(Path path, String mail, String receiver) throws IOException {
         List<Email> emails = new ArrayList<>();
@@ -291,7 +278,7 @@ public class SenderReceiverService {
                         }
                     }
 
-                    if (processEmail) {
+                    if (processEmail && (receiver.equals("all") || Objects.equals(email.getReceiver(), receiver))) {
                         emailsToProcess.add(email); // Add email to process if the flag is set
                     }
 
@@ -380,6 +367,10 @@ public class SenderReceiverService {
                         email.setResult("Recipient inbox is full");
                         return true;
                     }
+                    if (line.contains(String.valueOf(email.getCouloirID())) && line.contains(" failed: cancelled with suppressed NDNs")) {
+                        email.setResult("cancelled with suppressed NDNs");
+                        return true;
+                    }
                     if (line.contains(String.valueOf(email.getCouloirID())) && (
                             (line.contains("message discarded without processing")) ||
                                     (line.contains("NoSuchUser")) ||
@@ -399,6 +390,13 @@ public class SenderReceiverService {
                                     (line.contains(" Relay access denied")) ||
                                     (line.contains("Session encryption is required")))) {
                         email.setResult("Not delivered");
+                        return true;
+                    }
+                    if ((line.contains("rule(Disc-Kaspersky-spam) rejected the message") ||
+                            line.contains("rule(Disc-Kaspersky-spam) discarded the message") ||
+                            (line.contains("failed: Message detected as SPAM")))
+                            && line.contains("" + email.getCouloirID())) {
+                        email.setResult("Rejected(mail considered as a spam)");
                         return true;
                     }
                     if (line.contains(String.valueOf(email.getCouloirID())) && line.contains("rule(discard_from_MX) discarded the message")) {
@@ -453,7 +451,7 @@ public class SenderReceiverService {
                         String dateString = fileName + "T" + extractedLine;
 
                         LocalDateTime dateTime = LocalDateTime.parse(dateString, formatter);
-                        email.setDate(Date.from(dateTime.atZone(ZoneId.of("UTC+1")).toInstant()));
+                        email.setDate(Date.from(dateTime.atZone(ZoneId.systemDefault()).toInstant()));
                         email.setFes(path.getParent().getFileName().toString());
                     }
 
@@ -476,7 +474,9 @@ public class SenderReceiverService {
                         }
                         if (bufferedLine.contains("relayed via") && bufferedLine.contains("" + email.getId())) {
                             email.setResult("Delivered");
-                        } else if (bufferedLine.contains("rule(Disc-Kaspersky-spam) discarded the message") && bufferedLine.contains("" + email.getId())) {
+                        } else if ((bufferedLine.contains("rule(Disc-Kaspersky-spam) discarded the message") ||
+                                (bufferedLine.contains("failed: Message detected as SPAM")))
+                                && bufferedLine.contains("" + email.getId())) {
                             email.setResult("Rejected(mail considered as a spam)");
                         } else if (bufferedLine.contains("composed message exceeds the size limit") && bufferedLine.contains("" + email.getId())) {
                             email.setResult("Mail or attachment exceeds size limit");
@@ -622,54 +622,39 @@ public class SenderReceiverService {
     private static void couloirIdExecutor(Email email, ExecutorService executorService) {
         String pattern = "yyyy-MM-dd'T'HH:mm:ss";
         DateFormat df = new SimpleDateFormat(pattern);
-        df.setTimeZone(TimeZone.getTimeZone("UTC+1"));
+        df.setTimeZone(TimeZone.getDefault());
         String date = df.format(email.getDate());
 
-        String[] logDirectories = getDirectoriesInTimeRange(date, date, "couloirSearch2", ipAdressConclusion(email.getIPAdress()));
+        String[] Directories = getDirectoriesInTimeRange(date, date, "couloirSearch2", ipAdressConclusion(email.getIPAdress()));
         System.out.println(email.getCouloirID() + "  " + ipAdressConclusion(email.getIPAdress()) + " " + email.getDate().toInstant().atZone(ZoneId.of("UTC+1")));
-        System.out.println("CouloirFiles: " + Arrays.toString(logDirectories));
-
-        List<CompletableFuture<Boolean>> futures = Arrays.stream(logDirectories)
-                .flatMap(logDirectory -> searchCouloirInDirectory(Paths.get(logDirectory), email, executorService).stream())
+        System.out.println("CouloirFiles: " + Arrays.toString(Directories));
+        List<CompletableFuture<Boolean>> futures = Arrays.stream(Directories)
+                .flatMap(Directory -> searchCouloirInDirectory(Paths.get(Directory), email, executorService).stream())
                 .collect(Collectors.toList());
 
         boolean found = futures.stream().anyMatch(CompletableFuture::join);
 
         if (!found) {
-            searchInBaseDirectories(email, executorService);
+            Calendar calendar = Calendar.getInstance();
+            calendar.setTime(email.getDate()); // set the current date to the calendar
+            calendar.add(Calendar.MINUTE, 10); // add 30 minutes
+
+            // Get the updated date
+            Date newDate = calendar.getTime();
+
+
+            String dateCheck = df.format(newDate);
+            String[] Directories2 = getDirectoriesInTimeRange(dateCheck, dateCheck, "couloirSearch2", ipAdressConclusion(email.getIPAdress()));
+            System.out.println("2nd check CouloirFiles: " + Arrays.toString(Directories));
+            List<CompletableFuture<Boolean>> futures2 = Arrays.stream(Directories2)
+                    .flatMap(Directory2 -> searchCouloirInDirectory(Paths.get(Directory2), email, executorService).stream())
+                    .collect(Collectors.toList());
+            found = futures2.stream().anyMatch(CompletableFuture::join);
+
+            // a supprimé
         }
     }
 
-    private static void searchInBaseDirectories(Email email, ExecutorService executorService) {
-        String[] baseDirectories = new String[]{
-                "C:\\Users\\wassi\\OneDrive\\Bureau\\PROJECT\\PFE\\PFE-Kattem\\Log\\" + ipAdressConclusion(email.getIPAdress()) + "02\\"
-        };
-
-        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
-        for (String baseDirectory : baseDirectories) {
-            try (Stream<Path> paths = Files.walk(Paths.get(baseDirectory))) {
-                List<CompletableFuture<Boolean>> futures = paths.filter(Files::isRegularFile)
-                        .filter(path -> {
-                            String fileName = path.getFileName().toString();
-                            String fileDateStr = fileName.substring(0, 10);
-                            LocalDate fileDate = LocalDate.parse(fileDateStr, dateFormatter);
-                            LocalDate emailDate = email.getDate().toInstant().atZone(ZoneId.of("UTC+1")).toLocalDate();
-                            return fileDate.equals(emailDate);
-                        })
-                        .map(path -> CompletableFuture.supplyAsync(() -> searchCouloir(path, email), executorService))
-                        .collect(Collectors.toList());
-
-                if (futures.stream().anyMatch(CompletableFuture::join)) {
-                    break;
-                }
-            } catch (AccessDeniedException e) {
-                System.err.println("Access denied to directory: " + baseDirectory);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
 
     private static List<CompletableFuture<Boolean>> searchCouloirInDirectory(Path directory, Email email, ExecutorService executorService) {
         List<CompletableFuture<Boolean>> futures = new ArrayList<>();
@@ -682,46 +667,6 @@ public class SenderReceiverService {
         return futures;
     }
 
-
-    public CompletableFuture<List<List<Email>>> senderMailStatusAsyncBatch
-            (String mail, String receiver, String d1, String d2, int batchSize) {
-        CompletableFuture<List<List<Email>>> futureResult = new CompletableFuture<>();
-        List<List<Email>> resultEmailsBatched = new ArrayList<>();
-        String[] directories = getDirectoriesInTimeRange(d1, d2, "logSearch", "none");
-
-        CompletableFuture.supplyAsync(() -> {
-            ExecutorService executor = Executors.newCachedThreadPool();
-            try {
-                List<CompletableFuture<Void>> tasks = new ArrayList<>();
-                for (String directory : directories) {
-                    Path start = Paths.get(directory);
-                    Files.walk(start)
-                            .filter(Files::isRegularFile)
-                            .forEach(path -> {
-                                CompletableFuture<Void> task = CompletableFuture.runAsync(() -> {
-                                    try {
-                                        List<Email> emails = searchInFesSender(path, mail, receiver);
-                                        synchronized (resultEmailsBatched) {
-                                            resultEmailsBatched.add(emails);
-                                        }
-                                    } catch (IOException e) {
-                                        e.printStackTrace(); // Handle or log the exception
-                                    }
-                                }, executor);
-                                tasks.add(task);
-                            });
-                }
-                CompletableFuture<Void> allTasks = CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]));
-                allTasks.get(); // Wait for all tasks to complete
-                futureResult.complete(resultEmailsBatched);
-            } catch (Exception e) {
-                futureResult.completeExceptionally(e);
-            }
-            return futureResult;
-        });
-
-        return futureResult;
-    }
 
     public CompletableFuture<List<Email>> senderMailStatus
             (String mail, String receiver, String d1, String d2) {
@@ -805,7 +750,28 @@ public class SenderReceiverService {
         futureResult.complete(resultEmails);
         return futureResult;
     }
+
+
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

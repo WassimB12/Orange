@@ -42,7 +42,7 @@ public class OrangeApplication {
 
     @PostConstruct
     public void init() {
-        TimeZone.setDefault(TimeZone.getTimeZone("UTC+1"));
+        TimeZone.setDefault(TimeZone.getDefault());
     }
 
 
