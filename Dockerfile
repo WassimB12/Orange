@@ -1,14 +1,17 @@
-# Stage 1: Build the application
-FROM maven:3.8.4-openjdk-17 AS builder
-WORKDIR /app
-COPY pom.xml ./
-RUN mvn dependency:go-offline
-COPY src ./src
-RUN mvn package
-
-# Stage 2: Create the runtime image
+# Use an official Java runtime as a parent image
 FROM openjdk:17-jdk-alpine
-WORKDIR /app
-COPY --from=builder /app/target/Orange-0.0.1-SNAPSHOT.jar app.jar
+
+# The application's jar file
+ARG JAR_FILE=target/Orange-0.0.1-SNAPSHOT.jar
+
+# Add the application's jar to the container
+COPY ${JAR_FILE} app.jar
+
+# Expose the port that the app will run on
 EXPOSE 8083
+
+# Environment variables for MySQL connection
+
+
+# Run the jar file
 ENTRYPOINT ["java", "-jar", "/app.jar"]
