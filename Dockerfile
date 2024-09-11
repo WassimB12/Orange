@@ -12,7 +12,7 @@ EXPOSE 8083
 
 # Environment variables for MySQL connection
 ENV MYSQL_HOST=localhost
-ENV MYSQL_PORT=3306
+ENV MYSQL_PORT=3307
 ENV MYSQL_DATABASE=orangeDB
 ENV MYSQL_USER=root
 
