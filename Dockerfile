@@ -8,7 +8,7 @@ ARG JAR_FILE=target/Orange-0.0.1-SNAPSHOT.jar
 COPY ${JAR_FILE} app.jar
 
 # Expose the port that the app will run on
-EXPOSE 8083
+EXPOSE 8089
 
 # Environment variables for MySQL connection
 
