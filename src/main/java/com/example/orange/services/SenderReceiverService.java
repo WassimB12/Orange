@@ -227,7 +227,11 @@ public class SenderReceiverService {
                         if (line.contains("DEQUEUER [" + email.getId())) {
                             Matcher matcher = pattern.matcher(line);
                             while (matcher.find()) {
-                                email.setReceiver(matcher.group());
+                                if (email.getReceiver() != null && !email.getReceiver().isEmpty()) {
+                                    email.setReceiver(email.getReceiver() + "  //  " + matcher.group());
+                                } else {
+                                    email.setReceiver(matcher.group());
+                                }
                             }
                         }
                         if (line.contains("got:250") && line.contains(String.valueOf(email.getId()))) {
@@ -278,11 +282,11 @@ public class SenderReceiverService {
                         }
                     }
 
-                    if (processEmail && (receiver.equals("all") || Objects.equals(email.getReceiver(), receiver))) {
+                    if (processEmail && (receiver.equals("all") || email.getReceiver().contains(receiver))) {
                         emailsToProcess.add(email); // Add email to process if the flag is set
                     }
 
-                    if (receiver.equals("all") || Objects.equals(email.getReceiver(), receiver)) {
+                    if (receiver.equals("all") || email.getReceiver().contains(receiver)) {
                         emails.add(email);
                     }
                 }
