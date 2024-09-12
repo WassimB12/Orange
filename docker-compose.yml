@@ -9,8 +9,8 @@ services:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
       MYSQL_DATABASE: orangeDB
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ""
+      MYSQL_USER: myuser  # Use a custom MySQL user instead of root
+      MYSQL_PASSWORD: mypassword
     ports:
       - "8089:8089"
     depends_on:
@@ -21,9 +21,11 @@ services:
   mysql:
     image: mysql:5.7
     environment:
-      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'no'
+      MYSQL_ROOT_PASSWORD: rootpassword  # Secure root password
       MYSQL_DATABASE: orangeDB
-      MYSQL_PASSWORD:
+      MYSQL_USER: myuser  # Create a new user
+      MYSQL_PASSWORD: mypassword
     ports:
       - "3306:3306"
     volumes:
