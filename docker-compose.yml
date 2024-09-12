@@ -1,6 +1,25 @@
 version: '3.8'
 
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: orangeDB
+      MYSQL_USER: root
+      MYSQL_PASSWORD:
+    ports:
+      - "8089:8089"
+    depends_on:
+      - mysql
+    volumes:
+      - mysql-data
+
+
+
   mysql:
     image: mysql:5.7
     environment:
@@ -16,21 +35,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: orangeDB
-      MYSQL_USER: root
-      MYSQL_PASSWORD:
-    ports:
-      - "8089:8089"
-    depends_on:
-      - mysql
 
-volumes:
-  mysql-data:
+
+
+
