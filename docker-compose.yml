@@ -10,7 +10,7 @@ services:
       MYSQL_PORT: 3306
       MYSQL_DATABASE: orangeDB
       MYSQL_USER: root
-      MYSQL_PASSWORD:
+      MYSQL_PASSWORD: ""
     ports:
       - "8089:8089"
     depends_on:
