@@ -16,9 +16,7 @@ services:
     depends_on:
       - mysql
     volumes:
-      - mysql-data
-
-
+      - mysql-data:/var/lib/mysql
 
   mysql:
     image: mysql:5.7
@@ -37,7 +35,5 @@ services:
       retries: 5
     restart: unless-stopped
 
-
-
-
-
+volumes:
+  mysql-data:
