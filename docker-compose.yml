@@ -23,7 +23,7 @@ services:
       - mysql-data:/var/lib/mysql
 
   mysql:
-    image: mysql:5.7
+    image: mysql:8.0.32
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: 'no'
       MYSQL_ROOT_PASSWORD: rootpassword  # Secure root password
