@@ -13,13 +13,13 @@ public class ParameterController {
     private ParameterService parameterService;
 
     @PutMapping("/update/{id}")
-    public Parameter updateParameter(@PathVariable Long id, @RequestBody Parameter parameter) {
+    public Parameter updateParameter(@PathVariable Integer id, @RequestBody Parameter parameter) {
         // Implement logic to update the Parameter entity with the given id
         return parameterService.updateParameter(id, parameter);
     }
 
     @GetMapping("/get/{id}")
-    public Parameter getParameter(@PathVariable Long id) {
+    public Parameter getParameter(@PathVariable Integer id) {
         // Implement logic to retrieve the Parameter entity with the given id
         return parameterService.getParameter(id);
     }

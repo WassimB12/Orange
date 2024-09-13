@@ -7,7 +7,6 @@ import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import javax.mail.*;
@@ -20,11 +19,15 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class ScreenshotService {
@@ -34,8 +37,12 @@ public class ScreenshotService {
     private static final String SMTP_HOST = "smtp.gmail.com";
     private static final String SMTP_USER = "wassim.becheikh@gmail.com";
     private static final String SMTP_PASSWORD = "mlgm hxcs txlx iusw";
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+
     @Autowired
     DomainRepository domainRepository;
+
+
 
 
     public static File takeScreenshotAndSendEmail(String url, String mail, String receiver, int op)
@@ -133,7 +140,6 @@ public class ScreenshotService {
         Transport.send(message);
     }
 
-
     public void runTask(String mail, String receiver, int op) {
         try {
 
@@ -144,7 +150,36 @@ public class ScreenshotService {
         }
     }
 
-    @Scheduled(cron = "00 53 9 * * *") // Run every day at midnight
+    public void startScheduling(String hours, String minutes) {
+        // Parse the hours and minutes
+        int hour = Integer.parseInt(hours);
+        int minute = Integer.parseInt(minutes);
+
+        // Calculate initial delay and period (in seconds)
+        long initialDelay = calculateInitialDelay(hour, minute);
+        long period = TimeUnit.DAYS.toSeconds(1); // Run daily
+
+        // Schedule the task
+        scheduler.scheduleAtFixedRate(this::scheduleTask, initialDelay, period, TimeUnit.SECONDS);
+    }
+
+    private long calculateInitialDelay(int hour, int minute) {
+        LocalTime now = LocalTime.now();
+        LocalTime targetTime = LocalTime.of(hour, minute);
+
+        Duration duration = Duration.between(now, targetTime);
+        if (duration.isNegative()) {
+            // If the target time is earlier than the current time, schedule for the next day
+            duration = duration.plusDays(1);
+        }
+
+        return duration.toMillis();
+    }
+
+
+    public void stopScheduling() {
+        scheduler.shutdown();
+    }
 
     public void scheduleTask() {
         List<DomainList> domainList = domainRepository.findAll();
@@ -154,6 +189,7 @@ public class ScreenshotService {
             runTask(domain.getName(), domain.getRespEmail(), 1);
         }
     }
+
 
 }
 

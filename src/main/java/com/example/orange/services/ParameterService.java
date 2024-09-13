@@ -11,7 +11,7 @@ public class ParameterService {
     @Autowired
     private ParameterRespository parameterRepository;
 
-    public Parameter updateParameter(Long id, Parameter updatedParameter) {
+    public Parameter updateParameter(Integer id, Parameter updatedParameter) {
         Parameter existingParameter = parameterRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Parameter not found with id: " + id));
 
@@ -23,7 +23,7 @@ public class ParameterService {
         return parameterRepository.save(existingParameter);
     }
 
-    public Parameter getParameter(Long id) {
+    public Parameter getParameter(Integer id) {
         return parameterRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Parameter not found with id: " + id));
     }

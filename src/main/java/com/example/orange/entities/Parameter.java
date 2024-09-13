@@ -9,8 +9,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.Date;
-
 @Setter
 
 @Getter
@@ -21,8 +19,8 @@ import java.util.Date;
 public class Parameter {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    private Date time;
+    private Integer id;
+    private String time;
     private String email;
     private double pc;
 
