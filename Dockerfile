@@ -17,4 +17,4 @@ EXPOSE 8083
 
 
 # Run the jar file
-ENTRYPOINT ["java", "-Dserver.port=8089", "-jar", "/app.jar"]
+ENTRYPOINT ["java", "-Dserver.port=8083", "-jar", "/app.jar"]
