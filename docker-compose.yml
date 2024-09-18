@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: wassimbecheikh/myapp:latest
+    image: orange-app:latest
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
