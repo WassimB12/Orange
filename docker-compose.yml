@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: wassimbecheikh/myapp:latest
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
