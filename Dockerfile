@@ -7,7 +7,7 @@ WORKDIR /app
 COPY target/*.jar /app/Orange.jar
 
 # Expose the port that the application runs on
-EXPOSE 8083
+EXPOSE 8089
 
 # Define the command to run the JAR file
 ENTRYPOINT ["java", "-jar", "Orange.jar"]

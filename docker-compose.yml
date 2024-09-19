@@ -6,7 +6,7 @@ services:
     container_name: mysql_container
     environment:
       MYSQL_ROOT_PASSWORD: root_password
-      MYSQL_DATABASE: my_database
+      MYSQL_DATABASE: orangeDB
       MYSQL_USER: my_user
       MYSQL_PASSWORD: my_password
     ports:
@@ -18,13 +18,13 @@ services:
     image: wassimbecheikh/orange:latest
     container_name: springboot_container
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/my_database?autoReconnect=true&enabledTLSProtocols=TLSv1.2
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/orangeDB?autoReconnect=true&enabledTLSProtocols=TLSv1.2
       SPRING_DATASOURCE_USERNAME: my_user
       SPRING_DATASOURCE_PASSWORD: my_password
-      SERVER_PORT: "8083"
+      SERVER_PORT: "8089"
       SPRING_JPA_SHOW_SQL: "true"
     ports:
-      - "8083:8083"
+      - "8089:8089"
     depends_on:
       - mysql
     networks:
