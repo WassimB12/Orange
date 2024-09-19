@@ -1,0 +1,65 @@
+    pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = "sirine11/orange"
+        DOCKER_TAG = "latest"
+        DOCKER_USERNAME = ""  // Replace with your Docker Hub username
+        DOCKER_PASSWORD = "" // Replace with your Docker Hub password
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out code from Git repository...'
+                git url: 'https://github.com/SirineZoghlami/Orange.git'
+            }
+        }
+
+        stage('Build Spring Boot Application') {
+            steps {
+                echo 'Building Spring Boot Application...'
+                sh 'chmod +x ./mvnw'
+                sh './mvnw clean package -DskipTests'
+            }
+        }
+
+        stage('Login to Docker Hub') {
+            steps {
+                echo 'Logging into Docker Hub...'
+                sh "echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin"
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo 'Building Docker Image...'
+                sh """
+                docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                --build-arg JAR_FILE=target/Orange-0.0.1-SNAPSHOT.jar .
+                """
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                echo 'Pushing Docker Image...'
+                sh "docker push ${DOCKER_IMAGE}:${DOCKER_TAG}"
+            }
+        }
+
+        stage('Run Docker Compose') {
+            steps {
+                echo 'Running Docker Compose...'
+                sh 'docker-compose up -d'
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Cleaning up Docker containers...'
+            sh 'docker-compose down'
+        }
+    }
+}
