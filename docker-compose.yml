@@ -1,51 +1,35 @@
 version: '3.8'
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: orange-app:latest
-    environment:
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: orangeDB
-      MYSQL_USER: myuser  # Use a custom MySQL user instead of root
-      MYSQL_PASSWORD: mypassword
-    ports:
-      - "8083:8083"
-    restart: unless-stopped
-    networks:
-      - my-network
-
-    depends_on:
-      - mysql
-    volumes:
-      - mysql-data:/var/lib/mysql
-
   mysql:
-    image: mysql:8.0.32
+    image: mysql:latest
+    container_name: mysql_container
     environment:
-      MYSQL_ALLOW_EMPTY_PASSWORD: 'no'
-      MYSQL_ROOT_PASSWORD: rootpassword  # Secure root password
-      MYSQL_DATABASE: orangeDB
-      MYSQL_USER: myuser  # Create a new user
-      MYSQL_PASSWORD: mypassword
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: my_database
+      MYSQL_USER: my_user
+      MYSQL_PASSWORD: my_password
     ports:
       - "3306:3306"
     networks:
-      - my-network
-    volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+      - my_network
 
-volumes:
-  mysql-data:
+  springboot-app:
+    image: wassimbecheikh/orange:latest
+    container_name: springboot_container
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/my_database?autoReconnect=true&enabledTLSProtocols=TLSv1.2
+      SPRING_DATASOURCE_USERNAME: my_user
+      SPRING_DATASOURCE_PASSWORD: my_password
+      SERVER_PORT: "8083"
+      SPRING_JPA_SHOW_SQL: "true"  # Ensure this is a string
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mysql
+    networks:
+      - my_network
 
 networks:
-  my-network:
+  my_network:
+    driver: bridge

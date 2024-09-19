@@ -7,6 +7,7 @@ import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import javax.mail.*;
@@ -41,8 +42,6 @@ public class ScreenshotService {
 
     @Autowired
     DomainRepository domainRepository;
-
-
 
 
     public static File takeScreenshotAndSendEmail(String url, String mail, String receiver, int op)
@@ -180,6 +179,8 @@ public class ScreenshotService {
     public void stopScheduling() {
         scheduler.shutdown();
     }
+
+    @Scheduled(cron = "0 00 07 * * *") // Run every day at midnight
 
     public void scheduleTask() {
         List<DomainList> domainList = domainRepository.findAll();
