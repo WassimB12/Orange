@@ -2,7 +2,8 @@ version: '3.8'
 
 services:
   mysql:
-    image: mysql:8.0.32  # Ensure this matches your expected MySQL version
+    image: mysql:8.0.32
+    container_name: mysql_container
     environment:
       MYSQL_ROOT_PASSWORD: root_password
       MYSQL_DATABASE: my_database
@@ -21,7 +22,7 @@ services:
       SPRING_DATASOURCE_USERNAME: my_user
       SPRING_DATASOURCE_PASSWORD: my_password
       SERVER_PORT: "8083"
-      SPRING_JPA_SHOW_SQL: "true"  # Ensure this is a string
+      SPRING_JPA_SHOW_SQL: "true"
     ports:
       - "8083:8083"
     depends_on:
