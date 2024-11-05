@@ -226,13 +226,23 @@ public class SenderReceiverService {
                     while ((line = reader.readLine()) != null && !line.contains("QUEUE([" + email.getId() + "]) deleted")) {
                         if (line.contains("DEQUEUER [" + email.getId())) {
                             Matcher matcher = pattern.matcher(line);
+                            Set<String> uniqueEmails = new HashSet<>(); // Create a set to store unique emails
+
                             while (matcher.find()) {
+                                String foundEmail = matcher.group(); // Get the matched email
                                 if (email.getReceiver() != null && !email.getReceiver().isEmpty()) {
-                                    email.setReceiver(email.getReceiver() + "  //  " + matcher.group());
+                                    // Check if the email is not already in the set
+                                    if (uniqueEmails.add(foundEmail)) {
+                                        // If added successfully, append to the receiver
+                                        email.setReceiver(email.getReceiver() + "  //  " + foundEmail);
+                                    }
                                 } else {
-                                    email.setReceiver(matcher.group());
+                                    // If receiver is empty, initialize it with the found email
+                                    email.setReceiver(foundEmail);
+                                    uniqueEmails.add(foundEmail); // Add the first email to the set
                                 }
                             }
+
                         }
                         if (line.contains("got:250") && line.contains(String.valueOf(email.getId()))) {
                             int startIndex = line.indexOf("got:250") + "got:250".length();
@@ -270,7 +280,31 @@ public class SenderReceiverService {
                             email.setResult("recipient inbox is full");
                         } else if (line.contains("DEQUEUER [" + email.getId() + "]") && line.contains("message discarded without processing")) {
                             email.setResult("Rejected(Wrong mail address)");
-                        } else if (line.contains("[" + email.getId() + "] stored on ")) {
+                        } else if (line.contains(String.valueOf(email.getId())) && line.contains(" failed: cancelled with suppressed NDNs")) {
+                            email.setResult("cancelled with suppressed NDNs");
+                        } else if (line.contains(String.valueOf(email.getId())) && (
+                                (line.contains("message discarded without processing")) ||
+                                        (line.contains("NoSuchUser")) ||
+                                        (line.contains("Recipient address rejected: User unknown")) ||
+                                        (line.contains("host name is unknown ")) ||
+                                        (line.contains("mailbox unavailable ")) ||
+                                        (line.contains("no mailbox here by that name ")) ||
+                                        (line.contains("mailbox not found")))) {
+                            email.setResult("Rejected(Wrong mail address)");
+                        }
+                        if (line.contains(String.valueOf(email.getId())) && (
+                                (line.contains("This mailbox is disabled")) ||
+                                        (line.contains("failed: : DNS A-record is empty")) ||
+                                        (line.contains("discarded by Rules")) ||
+
+                                        (line.contains("batch delayed ")) ||
+                                        (line.contains("550 authentication required")) ||
+                                        (line.contains(" Relay access denied")) ||
+                                        (line.contains("Session encryption is required")))) {
+                            email.setResult("Not delivered");
+
+                        } else if (line.contains("[" + email.getId() + "] stored on ") || (
+                                line.contains("[" + email.getId()) && line.contains(email.getReceiver() + "relayed: relayed via"))) {
                             email.setResult("Delivered");
                             processEmail = false;
                             Matcher matcherIP2 = Pattern.compile("\\[(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})\\]").matcher(line);
@@ -389,6 +423,8 @@ public class SenderReceiverService {
                     if (line.contains(String.valueOf(email.getCouloirID())) && (
                             (line.contains("This mailbox is disabled")) ||
                                     (line.contains("failed: : DNS A-record is empty")) ||
+                                    (line.contains("discarded by Rules")) ||
+
                                     (line.contains("batch delayed ")) ||
                                     (line.contains("550 authentication required")) ||
                                     (line.contains(" Relay access denied")) ||

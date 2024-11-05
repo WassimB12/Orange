@@ -180,7 +180,7 @@ public class ScreenshotService {
         scheduler.shutdown();
     }
 
-    @Scheduled(cron = "0 00 07 * * *") // Run every day at midnight
+    @Scheduled(cron = "0 00 06 * * *") // Run every day at midnight
 
     public void scheduleTask() {
         List<DomainList> domainList = domainRepository.findAll();
