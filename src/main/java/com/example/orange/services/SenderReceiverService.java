@@ -35,12 +35,9 @@ public class SenderReceiverService {
     static Pattern patternFESid = Pattern.compile("got:250 (.*?) message");
     static String regex = "QUEUE\\(\\[(.*?)\\]\\)";
     static Pattern patternID = Pattern.compile("DEQUEUER \\[(\\d+)\\]");
-    static int batchSize = 1000;
     static String ipv4Regex = "relayed via ((?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})";
-    static String ipv4Regex2 = "^((25[0-5]|(2[0-4]|1\\d|[1-9]|)\\d)\\.?\\b){4}$";
     static Pattern pattern2 = Pattern.compile(regex);
     static Pattern patternIP = Pattern.compile(ipv4Regex);
-    static Pattern patternIP2 = Pattern.compile(ipv4Regex2);
     static DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
     public static String[] getDirectoriesInTimeRange
@@ -155,7 +152,6 @@ public class SenderReceiverService {
                                     filteredDirectories.add(path.toString());
                                 }
                             } else if (Objects.equals(op, "couloirSearch2") || Objects.equals(op, "couloirSearch")) {
-                                /* startDateTime = startDateTime.minusMinutes(20);*/
                                 if ((startDateTime.isAfter(fileDateTime) && startDateTime.isBefore(nextFileDateTime))
                                         || (endDateTime.isAfter(fileDateTime) && endDateTime.isBefore(nextFileDateTime))) { // TO REVIEW
                                     filteredDirectories.add(path.toString());
@@ -464,7 +460,6 @@ public class SenderReceiverService {
         try (BufferedReader reader = Files.newBufferedReader(path)) {
             String line;
             List<String> linesBuffer = new ArrayList<>();
-            int dequeuerLineIndex = -1;
 
             while ((line = reader.readLine()) != null) {
                 linesBuffer.add(line);
@@ -721,18 +716,16 @@ public class SenderReceiverService {
                 Path start = Paths.get(directory);
                 Files.walk(start)
                         .filter(Files::isRegularFile)
-                        .forEach(path -> {
-                            executor.submit(() -> {
-                                try {
-                                    List<Email> emails = searchInFesSender(path, mail, receiver);
-                                    synchronized (resultEmails) {
-                                        resultEmails.addAll(emails);
-                                    }
-                                } catch (IOException e) {
-                                    futureResult.completeExceptionally(e);
+                        .forEach(path -> executor.submit(() -> {
+                            try {
+                                List<Email> emails = searchInFesSender(path, mail, receiver);
+                                synchronized (resultEmails) {
+                                    resultEmails.addAll(emails);
                                 }
-                            });
-                        });
+                            } catch (IOException e) {
+                                futureResult.completeExceptionally(e);
+                            }
+                        }));
             }
         } catch (IOException e) {
             futureResult.completeExceptionally(e);
@@ -762,18 +755,16 @@ public class SenderReceiverService {
                 Path start = Paths.get(directory);
                 Files.walk(start)
                         .filter(Files::isRegularFile)
-                        .forEach(path -> {
-                            executor.submit(() -> {
-                                try {
-                                    List<Email> emails = readLog(path, receiverMail, sender);
-                                    synchronized (resultEmails) {
-                                        resultEmails.addAll(emails);
-                                    }
-                                } catch (IOException e) {
-                                    futureResult.completeExceptionally(e);
+                        .forEach(path -> executor.submit(() -> {
+                            try {
+                                List<Email> emails = readLog(path, receiverMail, sender);
+                                synchronized (resultEmails) {
+                                    resultEmails.addAll(emails);
                                 }
-                            });
-                        });
+                            } catch (IOException e) {
+                                futureResult.completeExceptionally(e);
+                            }
+                        }));
             }
         } catch (IOException e) {
             futureResult.completeExceptionally(e);
